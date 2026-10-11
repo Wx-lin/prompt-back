@@ -1,0 +1,11 @@
+[Unit]
+Description=Check database crawl schedules every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00 Asia/Shanghai
+Persistent=false
+AccuracySec=5s
+Unit=aigc-crawl.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,89 @@
+name: aigc-prompt
+x-app: &app
+  hostname: aigc-crawler
+  image: aigc-prompt-app:20261009
+  build:
+    context: .
+    dockerfile: backend/deploy/Dockerfile
+  env_file: runtime.env
+  environment:
+    TZ: Asia/Shanghai
+  volumes:
+    - ./media:/app/crawl_media
+    - ./crawler-data:/opt/MediaCrawler/data
+    - ./browser-profile:/opt/MediaCrawler/.chrome_debug_profile
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  init: true
+  pids_limit: 512
+  shm_size: 256m
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '3'}
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aigc
+      POSTGRES_DB: aigc_prompt
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    restart: unless-stopped
+    mem_limit: 320m
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=30]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U aigc -d aigc_prompt']
+      interval: 10s
+      retries: 10
+    logging:
+      options: {max-size: 10m, max-file: '3'}
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, 64mb, --maxmemory-policy, noeviction]
+    volumes: [redisdata:/data]
+    restart: unless-stopped
+    mem_limit: 96m
+    logging:
+      options: {max-size: 10m, max-file: '3'}
+  api:
+    <<: *app
+    restart: unless-stopped
+    mem_limit: 768m
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+  worker:
+    <<: *app
+    profiles: [jobs]
+    mem_limit: 1100m
+    cpus: 1.5
+    command: [python, -m, scripts.scheduled_crawl, --keyword, 'AI绘画提示词', --limit, '20']
+  frontend:
+    build:
+      context: frontend
+      args:
+        NEXT_PUBLIC_SITE_URL: https://62.234.69.93:8443
+    environment:
+      API_BASE_URL: http://api:8000
+      AIGC_DEMO_MODE: 'false'
+      NEXT_PUBLIC_SITE_URL: https://62.234.69.93:8443
+    restart: unless-stopped
+    mem_limit: 384m
+    depends_on: [api]
+    logging:
+      options: {max-size: 10m, max-file: '3'}
+  gateway:
+    image: nginx:alpine
+    ports: ['8082:8082', '8443:8443']
+    volumes:
+      - ./backend/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./backend/admin-panel/dist:/srv/admin:ro
+      - ./certificates:/etc/letsencrypt:ro
+    restart: unless-stopped
+    mem_limit: 64m
+    depends_on: [api, frontend]
+    logging:
+      options: {max-size: 10m, max-file: '3'}
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,35 @@
+[project]
+name = "aigc-prompt-backend"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.20.0",
+    "apscheduler>=3.11.3",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.142.4",
+    "google-auth>=2.61.0",
+    "httpx>=0.28.1",
+    "passlib>=1.7.4",
+    "pydantic[email]>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.32",
+    "redis>=8.1.0",
+    "resend>=2.49.1",
+    "sqlalchemy[asyncio]>=2.1.4",
+    "uvicorn[standard]>=0.54.0",
+    "playwright>=1.63.0",
+    "cos-python-sdk-v5>=1.9.44",
+    "openai>=3.26.1",
+]
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.22.1",
+    "anyio>=4.15.1",
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.10",
+]

@@ -1,0 +1,13 @@
+[Unit]
+Description=AIGC due schedule dispatcher and AI review
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aigc-prompt
+ExecStart=/usr/bin/docker compose --profile jobs run --rm --name aigc-scheduled-worker worker python -m scripts.crawl_dispatch
+ExecStopPost=-/usr/bin/docker stop -t 20 aigc-scheduled-worker
+TimeoutStartSec=45min
+TimeoutStopSec=30

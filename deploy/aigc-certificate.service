@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew AIGC IP HTTPS certificate and reload gateway
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/aigc-prompt
+ExecStart=/usr/bin/docker run --rm --memory=256m -v /opt/aigc-prompt/certificates:/etc/letsencrypt -v /opt/blog/html/frontend:/var/www/acme certbot/certbot renew --quiet
+ExecStartPost=/usr/bin/docker compose exec -T gateway nginx -s reload
+TimeoutStartSec=10min

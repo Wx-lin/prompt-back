@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIGC提示词站 · 后台管理</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --border: #e5e7eb;
+    --bg: #f8fafc;
+    --text-muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: #111827;
+  }
+  header {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  .layout { display: flex; min-height: calc(100vh - 57px); }
+  nav {
+    width: 180px;
+    background: #fff;
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+  }
+  nav button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 24px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: #374151;
+  }
+  nav button.active {
+    background: #eff6ff;
+    color: var(--primary);
+    font-weight: 600;
+    border-right: 3px solid var(--primary);
+  }
+  main { flex: 1; padding: 24px; overflow-x: auto; }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  select, input[type="text"] {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  button.btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button.btn-primary { background: var(--primary); color: #fff; border: none; }
+  button.btn-danger { background: var(--danger); color: #fff; border: none; }
+  button.btn-success { background: var(--success); color: #fff; border: none; }
+  button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  th, td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    text-align: left;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  th { background: #f9fafb; color: var(--text-muted); font-weight: 600; }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .tag-draft { background: #fef3c7; color: #92400e; }
+  .tag-published { background: #dcfce7; color: #166534; }
+  .tag-pending { background: #fee2e2; color: #991b1b; }
+  .tag-resolved { background: #e5e7eb; color: #374151; }
+  .row-actions button { margin-right: 4px; }
+  .pagination { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal {
+    background: #fff; border-radius: 10px; padding: 24px;
+    width: 560px; max-height: 85vh; overflow-y: auto;
+  }
+  .modal h2 { margin-top: 0; font-size: 16px; }
+  .form-row { margin-bottom: 14px; }
+  .form-row label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--text-muted); }
+  .form-row input, .form-row textarea, .form-row select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;
+  }
+  .form-row textarea { min-height: 80px; font-family: inherit; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .login-box {
+    max-width: 360px; margin: 100px auto; background: #fff;
+    padding: 32px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .login-box h2 { margin-top: 0; }
+  .login-box input { width: 100%; padding: 10px; margin: 12px 0; border: 1px solid var(--border); border-radius: 6px; }
+  .empty { color: var(--text-muted); padding: 40px; text-align: center; }
+  .error-msg { color: var(--danger); font-size: 13px; margin-top: 8px; }
+  .image-list { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .image-list .img-item { position: relative; }
+  .image-list img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+  .image-list .img-item button {
+    position: absolute; top: -6px; right: -6px; width: 20px; height: 20px;
+    border-radius: 50%; border: none; background: var(--danger); color: #fff; cursor: pointer; font-size: 12px; line-height: 1;
+  }
+</style>
+</head>
+<body>
+
+<div id="login-view" class="login-box" style="display:none;">
+  <h2>AIGC提示词站 · 后台登录</h2>
+  <p style="color:#6b7280; font-size:13px;">输入 .env 里配置的 ADMIN_SECRET_KEY</p>
+  <input type="password" id="admin-key-input" placeholder="管理员密钥" onkeydown="if(event.key==='Enter') doLogin()">
+  <input type="text" id="api-base-input" placeholder="后端地址，默认 http://localhost:8000" value="http://localhost:8000">
+  <button class="btn btn-primary" style="width:100%;" onclick="doLogin()">登录</button>
+  <div id="login-error" class="error-msg"></div>
+</div>
+
+<div id="app-view" style="display:none;">
+  <header>
+    <h1>AIGC提示词站 · 后台管理</h1>
+    <div>
+      <span id="api-base-label" style="color:#6b7280; font-size:13px; margin-right:12px;"></span>
+      <button class="btn" onclick="doLogout()">退出</button>
+    </div>
+  </header>
+  <div class="layout">
+    <nav>
+      <button id="nav-prompts" class="active" onclick="switchTab('prompts')">内容管理</button>
+      <button id="nav-reports" onclick="switchTab('reports')">举报管理</button>
+    </nav>
+    <main>
+      <!-- 内容管理 -->
+      <section id="tab-prompts">
+        <div class="toolbar">
+          <select id="filter-published" onchange="loadPrompts(1)">
+            <option value="">全部状态</option>
+            <option value="true">已发布</option>
+            <option value="false">草稿</option>
+          </select>
+          <button class="btn btn-primary" onclick="openPromptModal()">+ 新建内容</button>
+          <button class="btn" onclick="loadPrompts(currentPromptPage)">刷新</button>
+        </div>
+        <div id="prompts-table-wrap"></div>
+        <div class="pagination" id="prompts-pagination"></div>
+      </section>
+
+      <!-- 举报管理 -->
+      <section id="tab-reports" style="display:none;">
+        <div class="toolbar">
+          <select id="filter-report-status" onchange="loadReports(1)">
+            <option value="">全部状态</option>
+            <option value="pending">待处理</option>
+            <option value="resolved">已处理</option>
+          </select>
+          <button class="btn" onclick="loadReports(currentReportPage)">刷新</button>
+        </div>
+        <div id="reports-table-wrap"></div>
+        <div class="pagination" id="reports-pagination"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- 新建/编辑内容弹窗 -->
+<div id="prompt-modal" class="modal-mask" style="display:none;">
+  <div class="modal">
+    <h2 id="prompt-modal-title">新建内容</h2>
+    <div class="form-row">
+      <label>标题 *</label>
+      <input type="text" id="f-title">
+    </div>
+    <div class="form-row">
+      <label>提示词原文 *</label>
+      <textarea id="f-prompt-text"></textarea>
+    </div>
+    <div class="form-row">
+      <label>使用说明（选填）</label>
+      <textarea id="f-description"></textarea>
+    </div>
+    <div class="form-row">
+      <label>分类 *</label>
+      <select id="f-category"></select>
+    </div>
+    <div class="form-row">
+      <label>适用模型（逗号分隔，如：即梦,Midjourney）</label>
+      <input type="text" id="f-models">
+    </div>
+    <div class="form-row">
+      <label>作者名</label>
+      <input type="text" id="f-author">
+    </div>
+    <div class="form-row">
+      <label>来源链接</label>
+      <input type="text" id="f-source-url">
+    </div>
+    <div class="form-row">
+      <label>效果图 URL（逗号分隔多张）</label>
+      <input type="text" id="f-images" placeholder="https://.../1.jpg, https://.../2.jpg">
+    </div>
+    <div class="form-row">
+      <label><input type="checkbox" id="f-published" style="width:auto; margin-right:6px;">创建后直接发布</label>
+    </div>
+    <div id="prompt-modal-error" class="error-msg"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closePromptModal()">取消</button>
+      <button class="btn btn-primary" onclick="submitPrompt()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 处理举报弹窗 -->
+<div id="report-modal" class="modal-mask" style="display:none;">
+  <div class="modal">
+    <h2>处理举报</h2>
+    <div class="form-row">
+      <label>处理备注</label>
+      <textarea id="r-note" placeholder="例如：确认侵权，已下架 / 核实后驳回"></textarea>
+    </div>
+    <div class="form-row">
+      <label><input type="checkbox" id="r-unpublish" style="width:auto; margin-right:6px;">同时下架这条内容</label>
+    </div>
+    <div id="report-modal-error" class="error-msg"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeReportModal()">取消</button>
+      <button class="btn btn-primary" onclick="submitReportHandle()">确认处理</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

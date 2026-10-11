@@ -1,0 +1,4 @@
+#!/bin/sh
+# Chromium namespace sandbox is unavailable in this unprivileged Docker container.
+# Container isolation is retained: non-root, no capabilities, no-new-privileges.
+exec /usr/bin/chromium --no-sandbox "$@"

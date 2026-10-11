@@ -1,0 +1,14 @@
+line-length = 110
+target-version = "py313"
+
+# alembic/versions 下是 alembic autogenerate 自动生成的迁移脚本，不是手写代码，
+# 每次重新生成都会覆盖，不值得为了 lint 通过手动改动它。
+extend-exclude = ["alembic/versions"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]
+# B008：FastAPI 官方推荐的 Depends(...) 写在函数参数默认值里是标准用法，
+# ruff 默认规则会误报，这里显式忽略。
+# UP042：(str, Enum) 混合继承在 Pydantic v2 + FastAPI OpenAPI 文档生成场景下
+# 兼容性验证更广泛，比 StrEnum 更稳妥，这里保留现有写法。
+ignore = ["B008", "UP042"]

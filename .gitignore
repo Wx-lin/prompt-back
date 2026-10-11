@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# 环境变量（含密钥，严禁提交到 Git）
+.env
+.crawler_state/
+draft_9e7be6a8_folder/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# 测试/覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+
