@@ -234,3 +234,11 @@ curl() { cp "$backup/response" "${@: -1}"; }
 """
     result = subprocess.run(["bash", "-c", prefix + function + "\nadmin_healthy"], capture_output=True)
     assert result.returncode == expected
+
+
+def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    assert "exec 8> .release-deploy.lock" in source
+    assert "flock -w 600 8" in source
+    assert "flock -w 600 9" in source
+    assert "flock -n 8" not in source

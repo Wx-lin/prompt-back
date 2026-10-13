@@ -14,9 +14,9 @@ auto_migration=${5:-}
 cd /opt/aigc-prompt
 umask 077
 exec 8> .release-deploy.lock
-flock -n 8 || { echo 'Another production deployment is running'; exit 1; }
+flock -w 600 8 || { echo 'Timed out waiting for another production deployment'; exit 1; }
 exec 9> .backend-deploy.lock
-flock -n 9 || { echo 'Another backend deployment is running'; exit 1; }
+flock -w 600 9 || { echo 'Timed out waiting for another backend deployment'; exit 1; }
 backup="releases/$release"
 printf '%s  %s\n' "$expected_hash" "$backup/release.tar.gz" | sha256sum -c -
 if [[ -n "$admin_hash" ]]; then
