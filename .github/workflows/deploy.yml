@@ -99,7 +99,11 @@ jobs:
           release="backend-$(date -u +%Y%m%d-%H%M%S)"
           backend_hash=$(sha256sum release/release.tar.gz | awk '{print $1}')
           admin_hash=$(sha256sum release/admin.tar.gz | awk '{print $1}')
+          # Validated release names and hashes intentionally expand before SSH.
+          # shellcheck disable=SC2029
           ssh "${ssh_options[@]}" "$remote" "mkdir -p /opt/aigc-prompt/releases/$release"
           scp "${ssh_options[@]}" release/release.tar.gz release/admin.tar.gz release/update-backend.sh "$remote:/opt/aigc-prompt/releases/$release/"
           # Only this reviewed additive migration is eligible for automatic upgrade.
+          # Validated release names and hashes intentionally expand before SSH.
+          # shellcheck disable=SC2029
           ssh "${ssh_options[@]}" "$remote" "bash /opt/aigc-prompt/releases/$release/update-backend.sh $release $backend_hash false $admin_hash e7a13c9b40d2"
