@@ -69,9 +69,8 @@ finish() {
         fi
     fi
     if [[ "$admin_switched" == true && "$success" != true ]]; then
-        cp "$backup/admin.index.previous" backend/admin-panel/dist/index.html.rollback
-        chmod 0644 backend/admin-panel/dist/index.html.rollback
-        mv backend/admin-panel/dist/index.html.rollback backend/admin-panel/dist/index.html || code=1
+        sudo -n install -m 0644 "$backup/admin.index.previous" backend/admin-panel/dist/index.html.rollback || code=1
+        sudo -n mv backend/admin-panel/dist/index.html.rollback backend/admin-panel/dist/index.html || code=1
     fi
     if [[ "$switched" == true && "$success" != true ]]; then
         echo 'Health check failed. Restoring previous backend image.'
@@ -179,20 +178,19 @@ if [[ -n "$admin_hash" ]]; then
     cp backend/admin-panel/dist/index.html "$backup/admin.index.previous"
     # Keep old hashed assets for open browser tabs and rollback; publish index last.
     if [[ -d "$backup/admin.new/assets" ]]; then
-        mkdir -p backend/admin-panel/dist/assets
-        cp -a "$backup/admin.new/assets/." backend/admin-panel/dist/assets/
+        sudo -n mkdir -p backend/admin-panel/dist/assets
+        sudo -n cp -a "$backup/admin.new/assets/." backend/admin-panel/dist/assets/
     fi
     for file in "$backup/admin.new"/*; do
         [[ "$(basename "$file")" == index.html || "$(basename "$file")" == assets ]] && continue
-        cp -a "$file" backend/admin-panel/dist/
+        sudo -n cp -a "$file" backend/admin-panel/dist/
     done
-    cp "$backup/admin.new/index.html" backend/admin-panel/dist/index.html.next
+    sudo -n install -m 0644 "$backup/admin.new/index.html" backend/admin-panel/dist/index.html.next
     # umask 077 protects backups, but nginx must read the public static files.
-    find backend/admin-panel/dist -type d -exec chmod 0755 {} +
-    find backend/admin-panel/dist -type f -exec chmod 0644 {} +
-    chmod 0644 backend/admin-panel/dist/index.html.next
+    sudo -n find backend/admin-panel/dist -type d -exec chmod 0755 {} +
+    sudo -n find backend/admin-panel/dist -type f -exec chmod 0644 {} +
     admin_switched=true
-    mv backend/admin-panel/dist/index.html.next backend/admin-panel/dist/index.html
+    sudo -n mv backend/admin-panel/dist/index.html.next backend/admin-panel/dist/index.html
 fi
 switched=true
 sudo -n docker compose up -d --no-deps --no-build api

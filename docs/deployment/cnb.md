@@ -85,3 +85,8 @@ GitHub运行38360241552在后端容器拉取与管理后台依赖安装阶段失
 存在的uv0.11.17；CNB备用配置同样改为官方Python镜像。管理后台锁文件的resolved
 地址从公司内网域名迁到registry.npmjs.org，保留全部依赖版本和integrity；uv.lock
 原本只使用pypi.org/files.pythonhosted.org，不需要更改。
+
+实际部署38360787343发现既有后台dist部分文件由root持有，普通SSH用户复制favicon
+时被拒绝。发布与回滚的dist写入使用显式sudo -n（install/cp/mkdir/find/mv），
+不整体chown目录、不替换网关bind mount。权限模拟回归覆盖root持有旧favicon与index，
+普通写入被拒绝，成功/回滚仍要求可公开读取的0644/0755。

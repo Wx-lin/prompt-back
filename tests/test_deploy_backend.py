@@ -171,19 +171,45 @@ def test_admin_assets_published_before_index_and_rollback_restores_index(tmp_pat
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("old index")
     (dist / "assets/old.js").write_text("old JS")
+    (dist / "favicon.svg").write_text("old favicon")
     backup = tmp_path / "backup"
     backup.mkdir()
     new = tmp_path / "new"
     (new / "assets").mkdir(parents=True)
     (new / "index.html").write_text("new index")
     (new / "assets/new.js").write_text("new JS")
+    (new / "favicon.svg").write_text("new favicon")
     with tarfile.open(backup / "admin.tar.gz", "w:gz") as archive:
         archive.add(new / "index.html", arcname="index.html")
         archive.add(new / "assets", arcname="assets")
+        archive.add(new / "favicon.svg", arcname="favicon.svg")
     prefix = (
         "set -Eeuo pipefail; umask 077; backup=backup; admin_hash=x; admin_switched=false; "
         "switched=false; success=false; old_id=; timer_was_active=false\n"
     )
+    # Simulate root-owned bind-mount files: writes must pass the sudo boundary.
+    prefix += r"""
+ADMIN_WRITE_PRIVILEGED=no
+guard_write() {
+    case "${@: -1}" in
+        backend/admin-panel/dist*) [[ "$ADMIN_WRITE_PRIVILEGED" == yes ]] || return 77 ;;
+    esac
+}
+cp() { guard_write "$@" || return; command cp "$@"; }
+install() { guard_write "$@" || return; command install "$@"; }
+mv() { guard_write "$@" || return; command mv "$@"; }
+mkdir() { guard_write "$@" || return; command mkdir "$@"; }
+find() {
+    [[ "$1" != backend/admin-panel/dist || "$ADMIN_WRITE_PRIVILEGED" == yes ]] || return 77
+    command find "$@"
+}
+sudo() {
+    [[ "$1" == -n ]] || return 78
+    shift
+    printf '%s\n' "$*" >> "$backup/privileged-writes"
+    ADMIN_WRITE_PRIVILEGED=yes "$@"
+}
+"""
     suffix = "\nexit 1" if fail else "\nsuccess=true"
     result = subprocess.run(
         ["bash", "-c", prefix + finish + block + suffix], cwd=tmp_path, capture_output=True, text=True
@@ -192,6 +218,12 @@ def test_admin_assets_published_before_index_and_rollback_restores_index(tmp_pat
     assert (dist / "index.html").read_text() == ("old index" if fail else "new index")
     assert (dist / "assets/old.js").exists()
     assert (dist / "assets/new.js").exists()
+    assert (dist / "favicon.svg").read_text() == "new favicon"
+    writes = (backup / "privileged-writes").read_text()
+    assert "install -m 0644" in writes
+    assert "mv backend/admin-panel/dist/index.html.next" in writes
+    if fail:
+        assert "index.html.rollback" in writes
     assert (dist / "index.html").stat().st_mode & 0o777 == 0o644
     assert (dist / "assets/new.js").stat().st_mode & 0o777 == 0o644
     assert (dist / "assets").stat().st_mode & 0o777 == 0o755
