@@ -42,6 +42,11 @@ def main():
     parser.add_argument("--host", default="ubuntu@62.234.69.93")
     parser.add_argument("--socket", help="Reuse an existing SSH control socket")
     parser.add_argument("--dry-run", action="store_true", help="Validate and package locally only")
+    parser.add_argument(
+        "--migrate",
+        action="store_true",
+        help="Apply reviewed backward-compatible migrations with the new image before switching",
+    )
     args = parser.parse_args()
     if args.host.startswith("-") or any(c.isspace() for c in args.host):
         parser.error("Invalid SSH host")
@@ -100,7 +105,9 @@ def main():
                 ]
             )
             command = "bash " + shlex.quote(f"/opt/aigc-prompt/releases/{release}/update-backend.sh")
-            command += " " + " ".join(map(shlex.quote, (release, digest)))
+            command += " " + " ".join(
+                map(shlex.quote, (release, digest, "true" if args.migrate else "false"))
+            )
             run([*ssh, "-o", "BatchMode=yes", args.host, command])
             run(
                 [

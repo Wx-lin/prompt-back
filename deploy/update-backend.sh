@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 release=$1
 expected_hash=$2
+migrate=${3:-false}
+[[ "$migrate" == true || "$migrate" == false ]]
 [[ "$release" =~ ^backend-[0-9]{8}-[0-9]{6}$ ]]
 [[ "$expected_hash" =~ ^[a-f0-9]{64}$ ]]
 cd /opt/aigc-prompt
@@ -121,12 +123,26 @@ else
 fi
 sudo -n docker compose run --rm --no-deps -T api alembic current > "$backup/revision.after"
 sudo -n docker compose run --rm --no-deps -T api alembic heads > "$backup/heads"
-current=$(awk '/\(head\)/ {print $1}' "$backup/revision.after")
+current=$(awk '/^[0-9a-f]+([[:space:]]|$)/ {print $1}' "$backup/revision.after")
 heads=$(awk '/\(head\)/ {print $1}' "$backup/heads")
-[[ -n "$current" && "$current" == "$heads" ]] || {
-    echo 'Database migration required. Backend not switched; review migration before retrying.'
-    exit 1
-}
+[[ "$heads" =~ ^[0-9a-f]+$ ]] || { echo 'Expected one migration head; deployment stopped'; exit 1; }
+if [[ "$current" != "$heads" ]]; then
+    if [[ "$migrate" != true ]]; then
+        echo "Database migration required (${current:-base} -> $heads). Backend not switched."
+        echo 'Review backward compatibility, then rerun deploy_backend.py --migrate.'
+        exit 1
+    fi
+    echo "Applying reviewed migration (${current:-base} -> $heads) with the new image."
+    # Database backup is already validated. Never migrate with the old running API image.
+    sudo -n docker compose run --rm --no-deps -T api alembic upgrade head > "$backup/migration.log" 2>&1 || {
+        tail -40 "$backup/migration.log"
+        echo 'Migration failed. Backend not switched; database is not automatically downgraded.'
+        exit 1
+    }
+    sudo -n docker compose run --rm --no-deps -T api alembic current > "$backup/revision.after"
+    current=$(awk '/^[0-9a-f]+([[:space:]]|$)/ {print $1}' "$backup/revision.after")
+fi
+[[ "$current" == "$heads" ]] || { echo 'Migration did not reach the target head; backend not switched'; exit 1; }
 switched=true
 sudo -n docker compose up -d --no-deps --no-build api
 sudo -n docker compose exec -T gateway nginx -t

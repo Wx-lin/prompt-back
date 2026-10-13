@@ -92,7 +92,7 @@ python3 scripts/deploy_backend.py
 
 本地演练：`python3 scripts/deploy_backend.py --dry-run`，不会连接服务器。已有连接可用 `--socket /tmp/aigc-deploy-session/control`，否则默认建立独立连接并在完成后关闭。
 
-数据库有新迁移时脚本停止，不自动修改表结构；构建日志和备份位于服务器 `/opt/aigc-prompt/releases/backend-日期-时间/`。切换后健康检查失败会恢复旧镜像。源码增量更新复用旧镜像依赖；依赖或Dockerfile变化时需要至少5GiB空闲空间进行完整构建。服务器磁盘不足1GiB会拒绝部署；失败时查看该发布的 build.log，不要删数据卷。保留旧备份和镜像供回滚，不自动全局清理Docker。
+数据库有新迁移时默认停止；核对过迁移与旧版本兼容后，使用 `python3 scripts/deploy_backend.py --migrate`，在备份验证后用新镜像执行 `alembic upgrade head`，确认到达目标 head 再切换 API。`--dry-run --migrate` 仍仅本地检查；迁移失败不切换、不自动降级数据库。本次 `e7a13c9b40d2` 为新增可空列及新表，已验证向后兼容。构建日志和备份位于服务器 `/opt/aigc-prompt/releases/backend-日期-时间/`。切换后健康检查失败会恢复旧镜像。源码增量更新复用旧镜像依赖；依赖或Dockerfile变化时需要至少5GiB空闲空间进行完整构建。服务器磁盘不足1GiB会拒绝部署；失败时查看该发布的 build.log，不要删数据卷。保留旧备份和镜像供回滚，不自动全局清理Docker。
 
 ## 2026-10-10 正式域名与 Google 登录
 

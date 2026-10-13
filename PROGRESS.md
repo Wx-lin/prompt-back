@@ -388,3 +388,9 @@ DATABASE_URL=postgresql+asyncpg://wangxinlin@localhost:5432/aigc_prompt_dev
 - 既有 `scripts/deploy_backend.py --dry-run` 通过（130 passed, 3 skipped），脚本专用2项测试和远端shell语法检查通过，公开8443 `/health` 返回ok。旧SSH socket不可复用，当前免密SSH认证失败，未执行远端写入，未核验当前revision/磁盘。
 - 原脚本只部署后端、不执行迁移、不更新主站/管理后台，因此不能一键完成本次发布；迁移不在head时会保护性停止。本次Pillow新增导致完整依赖构建，需要脚本规定的至少5GiB空间。
 - 检查发现Docker依赖来自 `deploy/requirements.txt` 而非直接同步uv.lock；此前新增Pillow漏同步此导出文件。已使用frozen uv export重新导出并补齐Pillow，保留其他锁定版本。
+
+## 2026-10-13 · 部署脚本显式迁移选项
+
+- 用户实际运行停在 `Database migration required`，本地校验、SSH、上传和构建已成功，API未切换。补充 `--migrate` 显式许可，在已验证数据库备份后使用新镜像迁移，检查current=head再切换；默认保留停止保护。
+- 迁移异常保留旧API，不自动downgrade，迁移日志写入发布备份目录。此次e7迁移已验证为向后兼容新增字段/表，支持既有镜像回滚。
+- 部署测试先复现RED，7项脚本/mock-shell测试GREEN；覆盖默认拒绝、有许可成功、有许可失败、已在head、命令转发及打包。Ruff和Bash语法检查通过；未连接服务器或执行线上迁移。
