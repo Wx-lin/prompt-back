@@ -32,11 +32,11 @@ async def execute_persisted_task(task_id, auto_publish=False):
             return {}
         platform = getattr(task, "source_platform", "xiaohongshu")
         before = await _draft_ids(db) if platform == "xiaohongshu" else await _draft_ids(db, platform)
-    await _run_single_platform_task(task_id)
+    await _run_single_platform_task(task_id, await_review=auto_publish)
     counts = {"published": 0, "held": 0, "skipped": 0}
     async with AsyncSessionLocal() as db:
         task = await db.get(CrawlTask, task_id)
-        if task.status != "success":
+        if task.status not in ({"reviewing"} if auto_publish else {"success"}):
             return counts
         new_ids = (
             await _draft_ids(db) if platform == "xiaohongshu" else await _draft_ids(db, platform)
@@ -73,6 +73,11 @@ async def execute_persisted_task(task_id, auto_publish=False):
                     if draft is not None:
                         draft.review_note = reason
                         await db.commit()
+            async with AsyncSessionLocal() as db:
+                task = await db.get(CrawlTask, task_id)
+                task.published_count = counts["published"]
+                task.held_count = counts["held"]
+                await db.commit()
     async with AsyncSessionLocal() as db:
         task = await db.get(CrawlTask, task_id)
         task.published_count = counts["published"]
@@ -84,7 +89,7 @@ async def execute_persisted_task(task_id, auto_publish=False):
             if errors
             else ("内容留待人工处理：" + "；".join(held_reasons[:3]) if held_reasons else None)
         )
-        task.stage = "审核失败" if all_failed else "完成"
+        task.stage = "审核失败" if all_failed else ("完成" if new_ids else "本轮无新增内容")
         task.finished_at = datetime.now(UTC)
         task.log_tail = ((task.log_tail or "") + "\n自动审核结果：" + json.dumps(counts))[-64000:]
         await db.commit()

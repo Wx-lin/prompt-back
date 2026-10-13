@@ -1,5 +1,6 @@
 """Schedule calculations and persistence."""
 
+import random
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,14 @@ from sqlalchemy import select
 from app.models.crawl_schedule import CrawlSchedule
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+def choose_keyword(schedule) -> str:
+    """Select once per batch; do not repeat the previous keyword when possible."""
+    pool = list(dict.fromkeys(schedule.keywords or [schedule.keyword]))
+    previous = schedule.last_keyword or schedule.keyword
+    candidates = [keyword for keyword in pool if keyword != previous]
+    return random.choice(candidates or pool)
 
 
 def next_run(times: list[str], now: datetime) -> datetime:

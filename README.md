@@ -1,6 +1,3 @@
-fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.
-Use '--' to separate paths from revisions, like this:
-'git <command> [<revision>...] -- [<file>...]'
 # AIGC提示词站 · 后端服务（aigc-prompt-backend）
 
 > 这是 [AIGC提示词站](https://aigc-prompt.com)（图片类 AI 提示词展示站）的后端服务代码。

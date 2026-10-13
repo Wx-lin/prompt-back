@@ -85,6 +85,7 @@ def _draft_to_out(draft: CrawlDraft) -> CrawlDraftOut:
         raw_title=draft.raw_title,
         raw_content=draft.raw_content,
         author_name=draft.author_name,
+        author_avatar_url=draft.author_avatar_url,
         extracted_prompt_text=draft.extracted_prompt_text,
         extracted_category=draft.extracted_category,
         extracted_models=draft.extracted_models,

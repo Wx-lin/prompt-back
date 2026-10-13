@@ -32,6 +32,7 @@ class CrawlDraftOut(BaseModel):
     raw_title: str | None = None
     raw_content: str
     author_name: str | None = None
+    author_avatar_url: str | None = None
     extracted_prompt_text: str | None = None
     extracted_category: str | None = None
     extracted_models: str | None = None

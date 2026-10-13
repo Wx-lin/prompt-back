@@ -11,6 +11,7 @@ class CrawlScheduleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     platforms: list[str] = Field(min_length=1, max_length=3)
     keyword: str = Field(min_length=1, max_length=200)
+    keywords: list[str] = Field(default_factory=list, max_length=30)
     times: list[str] = Field(min_length=1, max_length=12)
     limit_count: int = Field(default=20, ge=1, le=50)
     enabled: bool = True
@@ -25,6 +26,16 @@ class CrawlScheduleCreate(BaseModel):
         if not value:
             raise ValueError("不能为空")
         return value
+
+    @field_validator("keywords")
+    @classmethod
+    def clean_keywords(cls, value):
+        cleaned = [item.strip() for item in value]
+        if any(not item or len(item) > 200 for item in cleaned):
+            raise ValueError("关键词须为 1-200 个字符")
+        if any("," in item for item in cleaned):
+            raise ValueError("关键词不能包含英文逗号，请拆成独立列表项")
+        return list(dict.fromkeys(cleaned))
 
     @field_validator("platforms")
     @classmethod

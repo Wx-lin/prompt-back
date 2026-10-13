@@ -10,7 +10,7 @@ def test_only_new_drafts_are_reviewed(monkeypatch):
     db = Mock()
     db.commit = AsyncMock()
     db.flush = AsyncMock()
-    db.get = AsyncMock(return_value=SimpleNamespace(status="success", log_tail="crawl log"))
+    db.get = AsyncMock(return_value=SimpleNamespace(status="reviewing", log_tail="crawl log"))
 
     @asynccontextmanager
     async def session():
@@ -25,6 +25,7 @@ def test_only_new_drafts_are_reviewed(monkeypatch):
     assert asyncio.run(svc.run_once("AI绘画提示词", 20)) == {"published": 1, "held": 0, "skipped": 0}
     assert review.await_args.args == (db, "new")
     run.assert_awaited_once()
+    assert run.await_args.kwargs == {"await_review": True}
 
 
 def test_failed_crawl_does_not_review(monkeypatch):
@@ -99,7 +100,7 @@ def test_review_stage_and_exception_are_truthful(monkeypatch):
     from app.models import CrawlTask
     from scripts import scheduled_crawl as svc
 
-    task = SimpleNamespace(status="success", log_tail="", source_platform="xiaohongshu")
+    task = SimpleNamespace(status="reviewing", log_tail="", source_platform="xiaohongshu")
     draft = SimpleNamespace(review_note=None)
     db = Mock()
     db.commit = AsyncMock()
@@ -127,3 +128,53 @@ def test_review_stage_and_exception_are_truthful(monkeypatch):
     assert task.status == "failed"
     assert "审核失败" in task.error_message
     assert "RuntimeError" in draft.review_note
+
+
+def test_review_persists_counts_before_processing_next_draft(monkeypatch):
+    from scripts import scheduled_crawl as svc
+
+    task = SimpleNamespace(
+        status="reviewing", log_tail="", source_platform="xiaohongshu", published_count=0, held_count=0
+    )
+    db = Mock(get=AsyncMock(return_value=task), commit=AsyncMock())
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    monkeypatch.setattr(svc, "AsyncSessionLocal", session)
+    monkeypatch.setattr(svc, "_draft_ids", AsyncMock(side_effect=[set(), {"a", "b"}]))
+    monkeypatch.setattr(svc, "_run_single_platform_task", AsyncMock())
+
+    async def review(db, draft_id):
+        if draft_id == "b":
+            assert task.status == "reviewing"
+            assert task.published_count == 1
+            assert task.finished_at is None
+        return "published"
+
+    monkeypatch.setattr(svc, "auto_publish_draft", review)
+    counts = asyncio.run(svc.execute_persisted_task("task", True))
+    assert counts["published"] == 2
+    assert task.status == "success"
+
+
+def test_empty_round_reports_no_new_content(monkeypatch):
+    from scripts import scheduled_crawl as svc
+
+    task = SimpleNamespace(status="reviewing", log_tail="crawl log", source_platform="xiaohongshu")
+    db = Mock(get=AsyncMock(return_value=task), commit=AsyncMock())
+
+    @asynccontextmanager
+    async def session():
+        yield db
+
+    monkeypatch.setattr(svc, "AsyncSessionLocal", session)
+    monkeypatch.setattr(svc, "_draft_ids", AsyncMock(side_effect=[{"old"}, {"old"}]))
+    monkeypatch.setattr(svc, "_run_single_platform_task", AsyncMock())
+    review = AsyncMock()
+    monkeypatch.setattr(svc, "auto_publish_draft", review)
+    assert asyncio.run(svc.execute_persisted_task("task", True)) == {"published": 0, "held": 0, "skipped": 0}
+    assert task.status == "success"
+    assert task.stage == "本轮无新增内容"
+    review.assert_not_awaited()

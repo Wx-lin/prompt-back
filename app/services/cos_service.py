@@ -24,6 +24,7 @@ import asyncio
 import mimetypes
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from qcloud_cos import CosConfig, CosS3Client
@@ -129,3 +130,36 @@ async def migrate_remote_image_to_cos(remote_url: str) -> str:
     ext = mimetypes.guess_extension(content_type) or ".jpg"
     object_key = f"prompts/{uuid.uuid4().hex}{ext}"
     return await asyncio.to_thread(_upload_bytes_sync, resp.content, object_key, content_type)
+
+
+async def upload_author_avatar(remote_url: str) -> str:
+    """Copy a crawler-supplied platform avatar to COS before publishing it."""
+    host = (urlparse(remote_url).hostname or "").lower()
+    allowed_suffixes = (
+        "xhscdn.com", "sinaimg.cn", "weibo.cn", "kscdn.com", "gifshow.com", "kwaicdn.com",
+        "yximgs.com", "kwimgs.com",
+    )
+    if not remote_url.startswith("https://") or not any(
+        host == suffix or host.endswith("." + suffix) for suffix in allowed_suffixes
+    ):
+        raise CosUploadError("头像地址不是支持的平台图片域名")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            async with client.stream("GET", remote_url) as response:
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "").split(";")[0].lower()
+                if content_type not in {"image/jpeg", "image/png", "image/webp", "image/gif"}:
+                    raise CosUploadError("头像响应不是支持的图片格式")
+                chunks = []
+                total_size = 0
+                async for chunk in response.aiter_bytes():
+                    total_size += len(chunk)
+                    if total_size > 2_000_000:
+                        raise CosUploadError("头像文件过大")
+                    chunks.append(chunk)
+    except httpx.HTTPError as exc:
+        raise CosUploadError(f"下载作者头像失败：{type(exc).__name__}") from exc
+    extension = mimetypes.guess_extension(content_type) or ".jpg"
+    object_key = f"author-avatars/{uuid.uuid4().hex}{extension}"
+    return await asyncio.to_thread(_upload_bytes_sync, b"".join(chunks), object_key, content_type)

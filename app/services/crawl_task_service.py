@@ -39,8 +39,10 @@ MediaCrawler 子进程在跑，因为它们共享同一个 CDP 调试 Chrome 实
 
 import asyncio
 import atexit
+import json
 import os
 import signal
+import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -156,7 +158,7 @@ async def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
         pass
     finally:
         _signal_process_group(process.pid, signal.SIGKILL)
-        await process.wait()
+        await asyncio.wait_for(process.wait(), timeout=5)
 
 
 async def _ensure_debug_chrome_running() -> asyncio.subprocess.Process | None:
@@ -255,15 +257,23 @@ async def _restore_browser_state():
         return
 
 
+BROWSER_CLOSE_TIMEOUT_SECONDS = 5
+
+
 async def _close_owned_browser(process):
-    try:
+    async def graceful_close():
         from playwright.async_api import async_playwright
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{CDP_DEBUG_PORT}")
             session = await browser.new_browser_cdp_session()
             await session.send("Browser.close")
-        await asyncio.wait_for(process.wait(), timeout=5)
+        await process.wait()
+
+    try:
+        # CDP may never acknowledge Browser.close after Chrome begins exiting.
+        # Bound the entire connection/command/driver shutdown, not just process.wait.
+        await asyncio.wait_for(graceful_close(), timeout=BROWSER_CLOSE_TIMEOUT_SECONDS)
     except Exception:
         await _terminate_process_group(process)
 
@@ -307,7 +317,25 @@ def _read_existing_ids(spec: PlatformSpec) -> set[str]:
     return ids
 
 
-async def _run_mediacrawler(spec: PlatformSpec, keyword: str, limit: int) -> tuple[int, str]:
+async def _run_mediacrawler(
+    spec: PlatformSpec, keyword: str, limit: int, *, excluded_ids: set[str] | None = None
+) -> tuple[int, str]:
+    env = {**os.environ, "TZ": settings.crawl_timezone}
+    env.pop("AIGC_XHS_EXCLUDE_IDS_FILE", None)
+    # Legacy manual input may contain comma-separated search terms.
+    if spec.source_platform != "xiaohongshu" or excluded_ids is None or "," in keyword:
+        return await _run_mediacrawler_process(spec, keyword, limit, env)
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json") as snapshot:
+        json.dump(sorted(excluded_ids), snapshot)
+        snapshot.flush()
+        return await _run_mediacrawler_process(
+            spec, keyword, limit, {**env, "AIGC_XHS_EXCLUDE_IDS_FILE": snapshot.name}
+        )
+
+
+async def _run_mediacrawler_process(
+    spec: PlatformSpec, keyword: str, limit: int, env: dict[str, str]
+) -> tuple[int, str]:
     """
     用子进程跑 MediaCrawler 的 main.py，返回 (returncode, 日志尾部文本)。
 
@@ -338,7 +366,7 @@ async def _run_mediacrawler(spec: PlatformSpec, keyword: str, limit: int) -> tup
         "--headless",
         str(settings.chrome_headless).lower(),
         cwd=str(MEDIACRAWLER_DIR),
-        env={**os.environ, "TZ": settings.crawl_timezone},
+        env=env,
         start_new_session=True,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -358,6 +386,12 @@ async def _run_mediacrawler(spec: PlatformSpec, keyword: str, limit: int) -> tup
     try:
         returncode = await asyncio.wait_for(collect_output(), settings.crawl_timeout_seconds)
         log_tail = "\n".join(log_lines[-80:])
+        if "XHS_LOGIN_ACCESS_DENIED" in log_tail:
+            raise CrawlTaskError(
+                "小红书平台拒绝当前账号或会话访问（-104）：您当前登录的账号没有权限访问。"
+                "本次已停止采集；请先在小红书确认账号状态，重复扫码不保证恢复。",
+                log_tail,
+            )
         if any(
             marker in log_tail
             for marker in (
@@ -451,6 +485,7 @@ async def _import_jsonl_to_drafts(
                 raw_title=title,
                 raw_content=content,
                 author_name=author,
+                author_avatar_url=_extract_avatar_url(item),
                 status="pending",
             )
             db.add(draft)
@@ -495,7 +530,18 @@ def _extract_fields(
     return title, content, author, note_url
 
 
-async def _run_single_platform_task(task_id: uuid.UUID) -> None:
+def _extract_avatar_url(item: dict) -> str | None:
+    """Use the avatar field emitted by the platform store, ignoring unsafe or invalid URLs."""
+    value = item.get("author_avatar_url") or item.get("avatar_url")
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if len(value) > 1000 or not value.startswith(("https://", "http://")):
+        return None
+    return value
+
+
+async def _run_single_platform_task(task_id: uuid.UUID, *, await_review: bool = False) -> None:
     """执行单个平台任务：拉起 MediaCrawler → 导入草稿 → 更新任务状态。"""
     async with AsyncSessionLocal() as db:
         task = await db.get(CrawlTask, task_id)
@@ -515,21 +561,36 @@ async def _run_single_platform_task(task_id: uuid.UUID) -> None:
         await db.commit()
 
         owned_chrome = None
+        crawl_completed = False
         try:
             ids_before = _read_existing_ids(spec)
+            excluded_ids = None
+            if spec.source_platform == "xiaohongshu":
+                known = await db.execute(select(CrawlDraft.source_note_id).where(
+                    CrawlDraft.source_platform == spec.source_platform
+                ))
+                excluded_ids = ids_before | {str(note_id) for note_id in known.scalars().all()}
             owned_chrome = await _ensure_debug_chrome_running()
             from app.services.crawl_login_service import observe_login
 
             stop_observer = asyncio.Event()
             observer = asyncio.create_task(observe_login(task_id, task.source_platform, stop_observer))
             try:
-                returncode, log_tail = await _run_mediacrawler(spec, task.keyword, task.limit_count)
+                returncode, log_tail = await _run_mediacrawler(
+                    spec, task.keyword, task.limit_count, excluded_ids=excluded_ids
+                )
             finally:
                 stop_observer.set()
-                await observer
+                # A browser read may be stuck after the crawler has already exited.
+                # Give login persistence a short grace period, then cancel the observer.
+                try:
+                    await asyncio.wait_for(observer, timeout=2)
+                except TimeoutError:
+                    pass
 
             if returncode != 0:
                 task.status = "failed"
+                task.stage = "失败"
                 task.error_message = "采集进程异常退出，详见日志"
                 task.log_tail = log_tail
                 task.finished_at = datetime.now(UTC)
@@ -538,12 +599,13 @@ async def _run_single_platform_task(task_id: uuid.UUID) -> None:
 
             new_count = await _import_jsonl_to_drafts(db, spec, ids_before, limit=task.limit_count)
 
-            task.status = "success"
-            task.stage = "采集完成"
+            task.status = "running"
+            task.stage = "采集收尾中"
             task.new_draft_count = new_count
             task.log_tail = log_tail
-            task.finished_at = datetime.now(UTC)
+            task.finished_at = None
             await db.commit()
+            crawl_completed = True
 
         except CrawlTaskError as exc:
             task.status = "failed"
@@ -554,13 +616,29 @@ async def _run_single_platform_task(task_id: uuid.UUID) -> None:
             await db.commit()
         except Exception as exc:  # noqa: BLE001 - 任务执行体必须兜住所有异常
             task.status = "failed"
+            task.stage = "失败"
             task.error_message = f"未预期的错误：{exc}"
             task.finished_at = datetime.now(UTC)
             await db.commit()
         finally:
             if owned_chrome is not None:
-                await _close_owned_browser(owned_chrome)
-                atexit.unregister(_signal_process_group)
+                try:
+                    await _close_owned_browser(owned_chrome)
+                except Exception as exc:
+                    crawl_completed = False
+                    task.status = "failed"
+                    task.stage = "采集收尾失败"
+                    task.error_message = f"浏览器清理失败：{type(exc).__name__}"
+                    task.finished_at = datetime.now(UTC)
+                    await db.commit()
+                else:
+                    atexit.unregister(_signal_process_group)
+
+        if crawl_completed:
+            task.status = "reviewing" if await_review else "success"
+            task.stage = "AI 审核中" if await_review else "采集完成"
+            task.finished_at = None if await_review else datetime.now(UTC)
+            await db.commit()
 
 
 async def _run_batch(task_ids: list[uuid.UUID]) -> None:

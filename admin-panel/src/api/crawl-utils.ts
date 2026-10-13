@@ -12,8 +12,13 @@ export function beijingTime(value: string | null): string {
 export function isActiveTask(status: string): boolean {
   return ['pending', 'running', 'awaiting_login', 'reviewing'].includes(status)
 }
-export function validateSchedule(input: { name: string; keyword: string; platforms: string[]; times: string[]; limit_count: number }): string {
+export function parseScheduleKeywords(value: string): string[] {
+  return [...new Set(value.split(/\r?\n/).map((keyword) => keyword.trim()).filter(Boolean))]
+}
+export function validateSchedule(input: { name: string; keyword: string; keywords?: string[]; platforms: string[]; times: string[]; limit_count: number }): string {
   if (!input.name.trim() || !input.keyword.trim()) return '请填写任务名称和关键词'
+  if (input.keywords && (input.keywords.length > 30 || input.keywords.some((keyword) => !keyword.trim() || keyword.trim().length > 200))) return '关键词最多 30 个，每个为 1–200 字'
+  if (input.keywords?.some((keyword) => keyword.includes(','))) return '关键词不能包含英文逗号，请每行填写一个关键词'
   if (!input.platforms.length) return '请选择至少一个采集平台'
   if (!Number.isInteger(input.limit_count) || input.limit_count < 1 || input.limit_count > 50) return '每平台采集数量必须为 1–50 的整数'
   if (!input.times.length || input.times.some((t) => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t))) return '请填写有效的执行时间'
@@ -26,4 +31,8 @@ export function hasNewQrVersion(available: boolean, next: string | number | null
 }
 export function hasLoginResumed(sawAwaitingLogin: boolean, required: boolean, status: string): boolean {
   return sawAwaitingLogin && !required && ['running', 'reviewing', 'success'].includes(status)
+}
+
+export function hasLoginFinished(sawAwaitingLogin: boolean, required: boolean, status: string): boolean {
+  return ['failed', 'success'].includes(status) || hasLoginResumed(sawAwaitingLogin, required, status)
 }

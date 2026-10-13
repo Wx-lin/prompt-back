@@ -31,8 +31,16 @@ def verify_google_id_token(token: str) -> dict:
     """
     settings = get_settings()
     try:
-        return id_token.verify_oauth2_token(token, _BoundedGoogleRequest(), settings.google_client_id)
+        payload = id_token.verify_token(
+            token,
+            _BoundedGoogleRequest(),
+            settings.google_client_id,
+            certs_url=settings.google_certs_url,
+        )
     except TransportError as exc:
         raise GoogleVerificationUnavailableError("Google verification service unavailable") from exc
     except ValueError as exc:
         raise GoogleTokenInvalidError(str(exc)) from exc
+    if payload.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise GoogleTokenInvalidError("Invalid Google token issuer")
+    return payload

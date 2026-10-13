@@ -141,6 +141,7 @@ export const TASK_STATUS_LABELS: Record<string, string> = {
 }
 
 export interface CrawlSchedule {
+  keywords?: string[]
   id: string
   name: string
   platforms: string[]

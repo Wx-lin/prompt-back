@@ -1,9 +1,12 @@
 import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
+from app.config import Settings
 from app.routers import auth
 from app.schemas.auth import GoogleLoginRequest
 from app.utils import google_auth
@@ -33,14 +36,55 @@ def test_google_certificate_transport_has_bounded_timeout(monkeypatch):
         calls.append(kwargs["timeout"])
         raise ValueError("test")
 
-    def verify(token, transport, audience):
+    def verify(token, transport, audience, *, certs_url):
+        assert certs_url == "https://www.googleapis.com/oauth2/v1/certs"
         transport("https://www.googleapis.com/oauth2/v1/certs")
 
     monkeypatch.setattr(google_auth.google_requests.Request, "__call__", request)
-    monkeypatch.setattr(google_auth.id_token, "verify_oauth2_token", verify)
+    monkeypatch.setattr(google_auth.id_token, "verify_token", verify)
     with pytest.raises(google_auth.GoogleTokenInvalidError):
         google_auth.verify_google_id_token("test")
     assert calls and 0 < calls[0] <= 10
+
+
+def test_google_verification_uses_configured_https_cert_endpoint(monkeypatch):
+    captured = {}
+
+    def verify(_token, _transport, _audience, *, certs_url):
+        captured["certs_url"] = certs_url
+        return {"sub": "google-user", "iss": "https://accounts.google.com"}
+
+    monkeypatch.setattr(
+        google_auth,
+        "get_settings",
+        lambda: SimpleNamespace(
+            google_client_id="client-id",
+            google_certs_url="https://aigc-google-certs.pages.dev/oauth2/v1/certs",
+        ),
+    )
+    monkeypatch.setattr(google_auth.id_token, "verify_token", verify)
+
+    assert google_auth.verify_google_id_token("test") == {
+        "sub": "google-user",
+        "iss": "https://accounts.google.com",
+    }
+    assert captured["certs_url"] == "https://aigc-google-certs.pages.dev/oauth2/v1/certs"
+
+
+def test_google_verification_rejects_wrong_issuer(monkeypatch):
+    monkeypatch.setattr(
+        google_auth.id_token,
+        "verify_token",
+        lambda *_args, **_kwargs: {"sub": "google-user", "iss": "https://attacker.example"},
+    )
+
+    with pytest.raises(google_auth.GoogleTokenInvalidError, match="issuer"):
+        google_auth.verify_google_id_token("test")
+
+
+def test_google_certificate_endpoint_rejects_plain_http():
+    with pytest.raises(ValidationError, match="must use HTTPS"):
+        Settings(google_certs_url="http://example.com/oauth2/v1/certs")
 
 
 @pytest.mark.asyncio

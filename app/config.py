@@ -7,6 +7,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,14 @@ class Settings(BaseSettings):
 
     # --- Google OAuth ---
     google_client_id: str = ""
+    google_certs_url: str = "https://www.googleapis.com/oauth2/v1/certs"
+
+    @field_validator("google_certs_url")
+    @classmethod
+    def validate_google_certs_url(cls, value: str) -> str:
+        if not value.startswith("https://"):
+            raise ValueError("Google certificate URL must use HTTPS")
+        return value
 
     # --- 邮件服务（Resend） ---
     resend_api_key: str = ""

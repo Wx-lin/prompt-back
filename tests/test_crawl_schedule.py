@@ -68,9 +68,18 @@ async def test_schedule_api_crud_and_history(monkeypatch, tmp_path):
         assert result.status_code == 201, result.text
         schedule_id = result.json()["id"]
         assert result.json()["next_run_at"] is not None
+        assert result.json()["keywords"] == []
+        result = await client.patch(
+            f"/api/admin/crawl-schedules/{schedule_id}",
+            json={"keywords": [" AI头像 ", "短剧人物", "AI头像"]},
+        )
+        assert result.status_code == 200, result.text
+        assert result.json()["keywords"] == ["AI头像", "短剧人物"]
+        assert result.json()["keyword"] == "AI"
         result = await client.patch(f"/api/admin/crawl-schedules/{schedule_id}", json={"enabled": False})
         assert result.status_code == 200, result.text
         assert result.json()["next_run_at"] is None
+        assert result.json()["keywords"] == ["AI头像", "短剧人物"]
         assert len((await client.get("/api/admin/crawl-schedules")).json()) == 1
         async with factory() as db:
             db.add(
@@ -209,3 +218,54 @@ async def test_handler_error_contracts_directly(monkeypatch):
         await api.login_qr(uuid.uuid4(), db)
     monkeypatch.setattr(crawl_login_service, "request_login_refresh", lambda _: None)
     assert (await api.refresh(uuid.uuid4(), db))["message"]
+
+
+def test_keyword_pool_normalizes_and_preserves_legacy():
+    base = dict(name="pool", platforms=["weibo"], keyword="AI", times=["10:00"])
+    assert CrawlScheduleCreate(**base).keywords == []
+    value = CrawlScheduleCreate(**base, keywords=[" AI头像 ", "短剧人物", "AI头像"])
+    assert value.keywords == ["AI头像", "短剧人物"]
+
+
+@pytest.mark.parametrize("keywords", [[" "], ["头像,人物"], ["x" * 201], [str(i) for i in range(31)], None])
+def test_keyword_pool_rejects_invalid_values(keywords):
+    with pytest.raises(ValidationError):
+        CrawlScheduleCreate(
+            name="pool", platforms=["weibo"], keyword="AI", times=["10:00"], keywords=keywords
+        )
+
+
+@pytest.mark.parametrize(
+    "pool,last,expected",
+    [
+        ([], None, "legacy"),
+        (["legacy", "new"], None, "new"),
+        (["only"], "only", "only"),
+        (["a", "b"], "a", "b"),
+    ],
+)
+def test_choose_keyword_fallback_and_no_repeat(pool, last, expected, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services.crawl_schedule_service import choose_keyword
+
+    monkeypatch.setattr("app.services.crawl_schedule_service.random.choice", lambda items: items[0])
+    schedule = SimpleNamespace(keywords=pool, last_keyword=last, keyword="legacy")
+    assert choose_keyword(schedule) == expected
+    assert schedule.last_keyword == last
+
+
+def test_choose_keyword_uses_random_candidates(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.services import crawl_schedule_service as service
+
+    seen = []
+
+    def choose(candidates):
+        seen.extend(candidates)
+        return candidates[-1]
+
+    monkeypatch.setattr(service.random, "choice", choose)
+    assert service.choose_keyword(SimpleNamespace(keywords=["a", "b", "c"], last_keyword="b")) == "c"
+    assert seen == ["a", "c"]

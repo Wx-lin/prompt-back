@@ -26,6 +26,11 @@ def test_real_publication_is_atomic_and_idempotent(monkeypatch):
     )
     monkeypatch.setattr(service, "_upload_images", AsyncMock(return_value=["https://cos/a", "https://cos/b"]))
     monkeypatch.setattr(
+        service.cos_service,
+        "upload_author_avatar",
+        AsyncMock(return_value="https://cos.example/avatar.jpg"),
+    )
+    monkeypatch.setattr(
         service.content_review_service, "review_draft_content", AsyncMock(return_value=review)
     )
 
@@ -49,6 +54,7 @@ def test_real_publication_is_atomic_and_idempotent(monkeypatch):
                     source_url="https://www.xiaohongshu.com/explore/test",
                     raw_content="原始文案",
                     author_name="作者",
+                    author_avatar_url="https://example.com/avatar.jpg",
                     status="pending",
                 )
                 db.add(draft)
@@ -68,6 +74,7 @@ def test_real_publication_is_atomic_and_idempotent(monkeypatch):
                 assert saved.status == "approved"
                 assert published.source_url.endswith("/test")
                 assert published.author_name == "作者"
+                assert published.author_avatar_url == "https://cos.example/avatar.jpg"
                 assert published.is_published
         finally:
             await engine.dispose()

@@ -32,3 +32,24 @@ test('QR refresh waits for a new revision and cannot report login before awaitin
   assert.equal(hasLoginResumed(true, false, 'failed'), false)
   assert.equal(hasLoginResumed(true, false, 'reviewing'), true)
 })
+
+test('login polling ends on task completion or confirmed resume, never during scan wait', async () => {
+  const { hasLoginFinished } = await import('../src/api/crawl-utils.ts')
+  assert.equal(hasLoginFinished(false, true, 'failed'), true)
+  assert.equal(hasLoginFinished(false, false, 'success'), true)
+  assert.equal(hasLoginFinished(true, false, 'running'), true)
+  assert.equal(hasLoginFinished(true, false, 'reviewing'), true)
+  assert.equal(hasLoginFinished(false, false, 'running'), false)
+  assert.equal(hasLoginFinished(true, true, 'awaiting_login'), false)
+})
+
+test('keyword editor trims blank lines, deduplicates, and validates list limits', async () => {
+  const { parseScheduleKeywords } = await import('../src/api/crawl-utils.ts')
+  assert.deepEqual(parseScheduleKeywords(' AI头像提示词 \n\n短剧人物提示词\nAI头像提示词 '), ['AI头像提示词', '短剧人物提示词'])
+  assert.equal(validateSchedule({ ...valid, keywords: ['AI', '头像'] }), '')
+  assert.ok(validateSchedule({ ...valid, keywords: [''] }))
+  assert.ok(validateSchedule({ ...valid, keywords: ['AI,头像'] }))
+  assert.ok(validateSchedule({ ...valid, keywords: ['a'.repeat(201)] }))
+  assert.ok(validateSchedule({ ...valid, keywords: Array.from({ length: 31 }, (_, i) => `词${i}`) }))
+  assert.equal(validateSchedule({ ...valid, keywords: [] }), '')
+})

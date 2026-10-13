@@ -192,3 +192,25 @@ async def test_manual_enqueue_missing_and_persisted(store, monkeypatch):
     assert len(tasks) == 1
     assert tasks[0].trigger_type == "manual"
     execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_pool_rotates_once_per_batch_and_duplicate_slot_does_not_rotate(store):
+    now = datetime.now(UTC)
+    identifier = await schedule(store, now)
+    async with store() as db:
+        setting = await db.get(CrawlSchedule, identifier)
+        setting.platforms = ["weibo", "xiaohongshu"]
+        setting.keywords = ["头像提示词", "人物提示词"]
+        setting.last_keyword = "头像提示词"
+        first = await dispatch._create_tasks(db, setting, now, "scheduled")
+        assert {task.keyword for task in first} == {"人物提示词"}
+        assert setting.last_keyword == "人物提示词"
+        assert await dispatch._create_tasks(db, setting, now, "scheduled") == []
+        assert setting.last_keyword == "人物提示词"
+        second = await dispatch._create_tasks(db, setting, now + timedelta(days=1), "scheduled")
+        assert {task.keyword for task in second} == {"头像提示词"}
+        await db.commit()
+    async with store() as db:
+        setting = await db.get(CrawlSchedule, identifier)
+        assert setting.last_keyword == "头像提示词"

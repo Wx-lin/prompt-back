@@ -76,6 +76,7 @@ class PromptDetailOut(BaseModel):
     category: str
     models: list[str]
     author_name: str | None = None
+    author_avatar_url: str | None = None
     source_url: str | None = None
     like_count: int
     view_count: int

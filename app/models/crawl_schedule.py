@@ -17,6 +17,8 @@ class CrawlSchedule(Base):
     name: Mapped[str] = mapped_column(String(100))
     platforms: Mapped[list[str]] = mapped_column(JSON)
     keyword: Mapped[str] = mapped_column(String(200))
+    keywords: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
+    last_keyword: Mapped[str | None] = mapped_column(String(200))
     times: Mapped[list[str]] = mapped_column(JSON)
     limit_count: Mapped[int] = mapped_column(Integer, default=20)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

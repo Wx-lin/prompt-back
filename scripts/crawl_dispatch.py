@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal, engine
 from app.models import CrawlSchedule, CrawlTask
 from app.services.crawl_lock import crawl_lock
+from app.services.crawl_schedule_service import choose_keyword
 from app.services.crawl_schedule_service import next_run as compute_next_run
 from scripts.scheduled_crawl import execute_persisted_task
 
@@ -16,6 +17,7 @@ from scripts.scheduled_crawl import execute_persisted_task
 async def _create_tasks(db, schedule, slot, trigger):
     batch = uuid.uuid4()
     tasks = []
+    keyword = None
     for platform in schedule.platforms:
         existing = (
             (
@@ -32,6 +34,8 @@ async def _create_tasks(db, schedule, slot, trigger):
         )
         if existing:
             continue
+        if keyword is None:
+            keyword = choose_keyword(schedule)
         task = CrawlTask(
             id=uuid.uuid4(),
             batch_id=batch,
@@ -39,12 +43,14 @@ async def _create_tasks(db, schedule, slot, trigger):
             scheduled_for=slot,
             trigger_type=trigger,
             source_platform=platform,
-            keyword=schedule.keyword,
+            keyword=keyword,
             limit_count=schedule.limit_count,
             status="pending",
         )
         db.add(task)
         tasks.append(task)
+    if tasks:
+        schedule.last_keyword = keyword
     await db.flush()
     return tasks
 
@@ -79,7 +85,9 @@ async def _manual_execute(tasks):
 
 async def enqueue_schedule(schedule_id):
     async with AsyncSessionLocal() as db:
-        schedule = await db.get(CrawlSchedule, schedule_id)
+        schedule = await db.scalar(
+            select(CrawlSchedule).where(CrawlSchedule.id == schedule_id).with_for_update()
+        )
         if not schedule:
             raise ValueError("定时任务不存在")
         tasks = await _create_tasks(db, schedule, datetime.now(UTC), "manual")

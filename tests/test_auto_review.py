@@ -52,6 +52,7 @@ def test_auto_publish_uploads_before_review_and_keeps_only_credible(monkeypatch)
         raw_title="original",
         source_url="https://source",
         author_name="author",
+        author_avatar_url="https://example.com/avatar.jpg",
         extracted_models=None,
     )
     db = Mock()
@@ -73,6 +74,9 @@ def test_auto_publish_uploads_before_review_and_keeps_only_credible(monkeypatch)
 
     monkeypatch.setattr(svc, "_resolve_local_file_path", lambda path: path)
     monkeypatch.setattr(svc.cos_service, "upload_prompt_image", upload)
+    monkeypatch.setattr(
+        svc.cos_service, "upload_author_avatar", AsyncMock(return_value="https://cos.example/avatar.jpg")
+    )
     monkeypatch.setattr(svc.content_review_service, "review_draft_content", review)
     result = asyncio.run(svc.auto_publish_draft(db, "draft"))
     assert result == "published"
@@ -80,6 +84,7 @@ def test_auto_publish_uploads_before_review_and_keeps_only_credible(monkeypatch)
     added = [c.args[0] for c in db.add.call_args_list]
     assert len(added) == 2
     assert added[0].source_url == "https://source"
+    assert added[0].author_avatar_url == "https://cos.example/avatar.jpg"
     assert added[0].is_published is True
 
 
@@ -96,6 +101,7 @@ def test_failed_review_never_publishes(monkeypatch, failure):
         raw_title="original",
         source_url="https://source",
         author_name="author",
+        author_avatar_url=None,
         extracted_models=None,
     )
     db = Mock()

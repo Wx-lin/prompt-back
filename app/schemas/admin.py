@@ -34,6 +34,7 @@ class AdminPromptCreate(BaseModel):
     category: str
     models: list[str] = []
     author_name: str | None = None
+    author_avatar_url: str | None = None
     source_url: str | None = None
     is_published: bool = False
     images: list[AdminPromptImageIn] = []
@@ -53,6 +54,7 @@ class AdminPromptUpdate(BaseModel):
     category: str | None = None
     models: list[str] | None = None
     author_name: str | None = None
+    author_avatar_url: str | None = None
     source_url: str | None = None
     is_published: bool | None = None
     images: list[AdminPromptImageIn] | None = None
@@ -70,6 +72,7 @@ class AdminPromptOut(BaseModel):
     category: str
     models: list[str]
     author_name: str | None = None
+    author_avatar_url: str | None = None
     source_url: str | None = None
     is_published: bool
     view_count: int

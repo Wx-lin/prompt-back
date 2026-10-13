@@ -26,3 +26,10 @@ draft_9e7be6a8_folder/
 .coverage
 htmlcov/
 
+
+# Local credentials, tooling caches and legacy backups
+.env.*
+!.env.example
+.wrangler/
+admin-panel-backup/
+.ruff_cache/

@@ -66,6 +66,7 @@ async def create_prompt(db: AsyncSession, body: AdminPromptCreate) -> Prompt:
         category=body.category,
         models=body.models,
         author_name=body.author_name,
+        author_avatar_url=body.author_avatar_url,
         source_url=body.source_url,
         is_published=body.is_published,
     )

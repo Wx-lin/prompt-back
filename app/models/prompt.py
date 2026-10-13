@@ -36,6 +36,7 @@ class Prompt(Base):
     models: Mapped[list[str]] = mapped_column(ARRAY(String(50)), default=list, comment="适用模型列表")
 
     author_name: Mapped[str | None] = mapped_column(String(100), comment="来源作者名")
+    author_avatar_url: Mapped[str | None] = mapped_column(String(1000), comment="来源作者头像 URL")
     source_url: Mapped[str | None] = mapped_column(String(500), comment="来源链接，如小红书/抖音/X 原文地址")
 
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="是否已发布上线")

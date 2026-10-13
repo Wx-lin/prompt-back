@@ -44,6 +44,7 @@ class CrawlDraft(Base):
     raw_title: Mapped[str | None] = mapped_column(String(300), comment="原始标题")
     raw_content: Mapped[str] = mapped_column(Text, nullable=False, comment="原始正文全文，提示词通常混在里面")
     author_name: Mapped[str | None] = mapped_column(String(100), comment="原始作者昵称")
+    author_avatar_url: Mapped[str | None] = mapped_column(String(1000), comment="来源作者头像 URL")
 
     # 审核时人工填写/修正的字段，初始为空，审核通过后用这些字段生成正式的 Prompt。
     extracted_prompt_text: Mapped[str | None] = mapped_column(Text, comment="人工从正文中提取出的提示词原文")

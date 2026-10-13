@@ -210,12 +210,20 @@ async def approve_draft(db: AsyncSession, draft_id: uuid.UUID, body: CrawlDraftA
             "; ".join(upload_errors),
         )
 
+    author_avatar_url = None
+    if draft.author_avatar_url:
+        try:
+            author_avatar_url = await cos_service.upload_author_avatar(draft.author_avatar_url)
+        except cos_service.CosUploadError as exc:
+            logger.warning("草稿 %s 作者头像转存失败：%s", draft_id, exc)
+
     prompt = Prompt(
         title=body.title,
         prompt_text=prompt_text,
         category=category,
         models=models_source,
         author_name=draft.author_name,
+        author_avatar_url=author_avatar_url,
         source_url=draft.source_url,
         is_published=body.is_published,
     )
