@@ -382,3 +382,9 @@ DATABASE_URL=postgresql+asyncpg://wangxinlin@localhost:5432/aigc_prompt_dev
 - 最终收尾：常规浏览器46/46，隔离数据库投稿/后台审核桌面和手机4/4另行通过；投稿核心6模块语句覆盖80.4%。修复了commit rollback后ORM失效影响ACL恢复、清理任务仅前100条与后台PATCH未加锁3个并发边界；回归包含强制commit失败和101资产分页，最后复核无剩余阻塞。主站演示服务恢复到3100；测试服务/schema已停止并清理。
 
 - 提交前依赖审计：主站和管理后台 npm audit 无漏洞；pip-audit 仍报告既有 python-jose 3.5.0（CVE-2026-85394）与 ecdsa 0.19.2（PYSEC-2026-1325），公告暂无修复版本。安全审查核对本地有效 HS256、显式算法 allowlist 和对称密钥路径，不满足 DER 公钥混淆或 ECDSA 签名侧信道利用条件，不阻塞本次提交，但不得宣称 Python 依赖审计全通过。生产实际配置需部署时核对。公告：https://api.osv.dev/v1/vulns/CVE-2026-85394 和 https://api.osv.dev/v1/vulns/PYSEC-2026-1325。
+
+## 2026-10-13 · 部署脚本检查与依赖清单修复
+
+- 既有 `scripts/deploy_backend.py --dry-run` 通过（130 passed, 3 skipped），脚本专用2项测试和远端shell语法检查通过，公开8443 `/health` 返回ok。旧SSH socket不可复用，当前免密SSH认证失败，未执行远端写入，未核验当前revision/磁盘。
+- 原脚本只部署后端、不执行迁移、不更新主站/管理后台，因此不能一键完成本次发布；迁移不在head时会保护性停止。本次Pillow新增导致完整依赖构建，需要脚本规定的至少5GiB空间。
+- 检查发现Docker依赖来自 `deploy/requirements.txt` 而非直接同步uv.lock；此前新增Pillow漏同步此导出文件。已使用frozen uv export重新导出并补齐Pillow，保留其他锁定版本。

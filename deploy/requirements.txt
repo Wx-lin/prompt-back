@@ -86,6 +86,8 @@ opentelemetry-api==1.45.1
     # via fastapi
 passlib==1.7.4
     # via aigc-prompt-backend
+pillow==12.3.0
+    # via aigc-prompt-backend
 playwright==1.63.0
     # via aigc-prompt-backend
 pyasn1==0.6.4
