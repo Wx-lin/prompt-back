@@ -1,3 +1,4 @@
+import ModelPicker from '../components/ModelPicker'
 import { isActiveTask } from '../api/crawl-utils'
 /**
  * 采集草稿页：查看爬虫采集回来的笔记/动态（支持小红书、微博、快手多平台），
@@ -441,13 +442,8 @@ function ReviewModal({ draft, onClose, onDone, onUnauthorized }: ReviewModalProp
                 </select>
               </div>
               <div className="field">
-                <label>适用模型（逗号分隔）</label>
-                <input
-                  value={models}
-                  onChange={(e) => setModels(e.target.value)}
-                  placeholder="即梦, Midjourney"
-                  disabled={!isPending}
-                />
+                <ModelPicker value={models.split(',').map(value => value.trim()).filter(Boolean)}
+                  onChange={(value) => setModels(value.join(','))} disabled={!isPending} />
               </div>
             </div>
 

@@ -11,6 +11,7 @@ from app.models.crawl_task import CrawlTask
 from app.models.interaction import UserCollect, UserLike
 from app.models.prompt import Prompt, PromptImage
 from app.models.search_log import SearchLog
+from app.models.submission_asset import SubmissionAsset
 from app.models.user import User
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "PromptImage",
     "SearchLog",
     "User",
+    "SubmissionAsset",
     "UserCollect",
     "UserLike",
 ]

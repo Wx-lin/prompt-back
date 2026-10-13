@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models import CrawlDraft, Prompt, PromptImage
 from app.services import content_review_service, cos_service
 from app.services.crawl_service import _resolve_local_file_path
+from app.utils.model_labels import normalize_model_labels
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ async def auto_publish_draft(db, draft_id) -> str:
         title=review.suggested_title[:200],
         prompt_text=review.cleaned_prompt_text,
         category=review.suggested_category,
-        models=[],
+        models=normalize_model_labels((draft.extracted_models or "").split(",")),
         author_name=draft.author_name,
         author_avatar_url=author_avatar_url,
         source_url=draft.source_url,

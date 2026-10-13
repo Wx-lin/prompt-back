@@ -16,8 +16,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routers import admin, auth, categories, crawl_operations, prompts, search, users
+from app.routers import (
+    admin,
+    admin_submissions,
+    auth,
+    categories,
+    crawl_operations,
+    model_catalog,
+    prompts,
+    search,
+    submissions,
+    users,
+)
 from app.scheduler import create_scheduler
+from app.utils.submission_body_limit import SubmissionBodyLimit
 
 settings = get_settings()
 
@@ -46,10 +58,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(SubmissionBodyLimit)
+
+app.include_router(submissions.router)
+app.include_router(admin_submissions.router)
 app.include_router(prompts.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(categories.router)
+app.include_router(model_catalog.router)
 app.include_router(search.router)
 app.include_router(admin.router)
 app.include_router(crawl_operations.router)

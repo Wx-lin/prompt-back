@@ -7,13 +7,14 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Prompt, UserCollect, UserLike
 from app.schemas.prompt import PromptListItem, SortOption
+from app.services.model_service import matching_stored_labels
 
 
 async def list_prompts(
@@ -23,6 +24,7 @@ async def list_prompts(
     sort: SortOption,
     page: int,
     page_size: int,
+    search: str | None = None,
 ) -> tuple[list[PromptListItem], int]:
     """
     首页/分类页/模型筛选的分页列表查询，对应 PRD 3.1、3.3。
@@ -34,10 +36,15 @@ async def list_prompts(
     if category and category != "all":
         base_query = base_query.where(Prompt.category == category)
     if models:
-        # models 字段是 PostgreSQL 数组，用 && 操作符做"任意一个模型匹配即可"的 OR 逻辑
-        # （PostgreSQL ARRAY 没有 .overlap() 方法，正确写法是 .op("&&")，经本地真实
-        # 环境验证后修正——此前的 .overlap() 写法在真实运行时会抛 AttributeError）
-        base_query = base_query.where(Prompt.models.op("&&")(array(models)))
+        aliases = await matching_stored_labels(db, models)
+        base_query = base_query.where(Prompt.models.op("&&")(array(aliases)))
+    if search is not None:
+        base_query = base_query.where(
+            or_(
+                Prompt.title.ilike(f"%{search}%"),
+                Prompt.description.ilike(f"%{search}%"),
+            )
+        )
 
     sort_column = {
         SortOption.LATEST: Prompt.created_at.desc(),
@@ -51,7 +58,7 @@ async def list_prompts(
     # 用 selectinload 预加载第一张效果图，避免 N+1 查询问题
     list_query = (
         base_query.options(selectinload(Prompt.images))
-        .order_by(sort_column)
+        .order_by(sort_column, Prompt.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -76,7 +83,11 @@ async def list_prompts(
 
 async def get_prompt_detail(db: AsyncSession, prompt_id: uuid.UUID) -> Prompt | None:
     """获取单条提示词详情（含关联的效果图），对应 PRD 3.2 详情弹窗。"""
-    query = select(Prompt).where(Prompt.id == prompt_id).options(selectinload(Prompt.images))
+    query = (
+        select(Prompt)
+        .where(Prompt.id == prompt_id, Prompt.is_published.is_(True))
+        .options(selectinload(Prompt.images))
+    )
     result = await db.execute(query)
     return result.scalar_one_or_none()
 

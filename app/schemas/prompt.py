@@ -11,7 +11,9 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from app.utils.model_labels import normalize_model_labels
 
 
 class SortOption(str, Enum):
@@ -31,6 +33,9 @@ class PromptListItem(BaseModel):
     title: str
     category: str
     models: list[str]
+
+    _normalize_models = field_validator("models", mode="before")(normalize_model_labels)
+
     thumbnail_url: str | None = None  # 来自第一张效果图
     like_count: int
     view_count: int
@@ -75,6 +80,9 @@ class PromptDetailOut(BaseModel):
     description: str | None = None
     category: str
     models: list[str]
+
+    _normalize_models = field_validator("models", mode="before")(normalize_model_labels)
+
     author_name: str | None = None
     author_avatar_url: str | None = None
     source_url: str | None = None

@@ -369,3 +369,16 @@ DATABASE_URL=postgresql+asyncpg://wangxinlin@localhost:5432/aigc_prompt_dev
 - 新内容：实景转纸雕海报（5图）、AI绘画现状与技巧（16图）、实景延伸线稿旅行海报（9图）。保留来源作者与链接。
 - 核验：数据库正式内容54→57、草稿61→64；公网上线内容49→52，新3条由API返回。Linux/Xvfb配置、登录状态和日志修复均已部署；每日10:00/22:00timer仍启用，下一次2026-10-10 10:00。
 - 此前仅凭无头页面风险提示判断服务器IP不可用不充分；实际更换有界面浏览器及专用profile、用户扫码后已成功采集。后续仍可能需要平台要求的重新登录。
+
+
+## 2026-10-13 · 用户投稿、人工审核与模型版本目录
+
+- 新增私有上传资产、Prompt 提交人/审核字段及迁移 `e7a13c9b40d2`；登录用户上传/投稿/我的作品与独立后台通过/拒绝接口。所有权、重复绑定、过期、格式/字节/像素和限流校验；通过前图片 private ACL+短时签名，失败恢复、下架私有化及定时清理。公开详情和收藏列表过滤未发布。
+- 主站新增发布表单与我的作品，后台新增投稿审核；主站 HttpOnly BFF 校验浏览器 Host/Origin 与体积，返回固定错误，不回传服务内情。保留中英文、深浅主题与移动布局；登录安全回跳。
+- 模型别名保留具体版本且按家族归组；目录主站/后台共用，新写入及返回规范化，SQL 首页/搜索兼容存量别名、先过滤排序再分页。无需旧数据归一化迁移。
+- 验证：Python 全量 133/133（含隔离 PostgreSQL）；迁移在独立临时数据库完整升级、回退前一版、再升级通过；主站 88 项单元/组件测试、lint/typecheck/build 通过；后台 build/lint 通过（6条既有警告）。浏览器隔离数据库投稿与后台审核流程已通过；COS、Redis 和会话为测试替身，非真实云端验证。上线尚未执行。
+- 浏览器集成重跑：以 `AIGC_TEST_DATABASE_URL` 指向本地测试数据库，在后端运行 `uv run --group dev python -m uvicorn tests.submission_e2e_app:app --host 127.0.0.1 --port 8100`；主站 `API_BASE_URL=http://127.0.0.1:8100 AIGC_DEMO_MODE=false npm run dev -- --port 3110`；后台 `VITE_API_BASE=http://127.0.0.1:8100 npm run dev -- --host 127.0.0.1 --port 5176`；主站 `PLAYWRIGHT_BASE_URL=http://127.0.0.1:3110 AIGC_SUBMISSION_INTEGRATION=1 npm run test:e2e -- e2e/submissions-integration.spec.ts --workers=1`。fixture 仅绑定本机，关闭后自动删除随机 schema，不能部署到线上。
+
+- 最终收尾：常规浏览器46/46，隔离数据库投稿/后台审核桌面和手机4/4另行通过；投稿核心6模块语句覆盖80.4%。修复了commit rollback后ORM失效影响ACL恢复、清理任务仅前100条与后台PATCH未加锁3个并发边界；回归包含强制commit失败和101资产分页，最后复核无剩余阻塞。主站演示服务恢复到3100；测试服务/schema已停止并清理。
+
+- 提交前依赖审计：主站和管理后台 npm audit 无漏洞；pip-audit 仍报告既有 python-jose 3.5.0（CVE-2026-85394）与 ecdsa 0.19.2（PYSEC-2026-1325），公告暂无修复版本。安全审查核对本地有效 HS256、显式算法 allowlist 和对称密钥路径，不满足 DER 公钥混淆或 ECDSA 签名侧信道利用条件，不阻塞本次提交，但不得宣称 Python 依赖审计全通过。生产实际配置需部署时核对。公告：https://api.osv.dev/v1/vulns/CVE-2026-85394 和 https://api.osv.dev/v1/vulns/PYSEC-2026-1325。

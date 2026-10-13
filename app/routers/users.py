@@ -28,15 +28,13 @@ async def get_my_collects(
     base_query = (
         select(Prompt)
         .join(UserCollect, UserCollect.prompt_id == Prompt.id)
-        .where(UserCollect.user_id == current_user.id)
+        .where(UserCollect.user_id == current_user.id, Prompt.is_published.is_(True))
         .options(selectinload(Prompt.images))
         .order_by(UserCollect.created_at.desc())
     )
 
     total = (await db.execute(select(func.count()).select_from(base_query.subquery()))).scalar_one()
-    rows = (
-        (await db.execute(base_query.offset((page - 1) * page_size).limit(page_size))).scalars().all()
-    )
+    rows = (await db.execute(base_query.offset((page - 1) * page_size).limit(page_size))).scalars().all()
 
     items = [
         PromptListItem(

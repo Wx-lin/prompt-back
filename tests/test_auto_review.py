@@ -53,7 +53,7 @@ def test_auto_publish_uploads_before_review_and_keeps_only_credible(monkeypatch)
         source_url="https://source",
         author_name="author",
         author_avatar_url="https://example.com/avatar.jpg",
-        extracted_models=None,
+        extracted_models="MJ V6,midjourney v6,GPT-image-1",
     )
     db = Mock()
     db.execute = AsyncMock(return_value=Mock(scalar_one_or_none=Mock(return_value=draft)))
@@ -83,6 +83,7 @@ def test_auto_publish_uploads_before_review_and_keeps_only_credible(monkeypatch)
     assert draft.status == "approved"
     added = [c.args[0] for c in db.add.call_args_list]
     assert len(added) == 2
+    assert added[0].models == ["Midjourney V6", "GPT Image 1"]
     assert added[0].source_url == "https://source"
     assert added[0].author_avatar_url == "https://cos.example/avatar.jpg"
     assert added[0].is_published is True

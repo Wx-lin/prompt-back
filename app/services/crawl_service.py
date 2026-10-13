@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.models import CrawlDraft, Prompt, PromptImage
 from app.schemas.crawl import CrawlDraftApprove, CrawlDraftReviewUpdate
 from app.services import content_review_service, copyright_filter, cos_service
+from app.utils.model_labels import normalize_model_labels
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -96,6 +97,8 @@ async def update_draft_review_fields(
 
     update_data = body.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field == "extracted_models" and value is not None:
+            value = ",".join(normalize_model_labels(value.split(",")))
         setattr(draft, field, value)
 
     await db.commit()
@@ -221,7 +224,7 @@ async def approve_draft(db: AsyncSession, draft_id: uuid.UUID, body: CrawlDraftA
         title=body.title,
         prompt_text=prompt_text,
         category=category,
-        models=models_source,
+        models=normalize_model_labels(models_source),
         author_name=draft.author_name,
         author_avatar_url=author_avatar_url,
         source_url=draft.source_url,

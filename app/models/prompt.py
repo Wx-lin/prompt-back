@@ -41,6 +41,13 @@ class Prompt(Base):
 
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="是否已发布上线")
 
+    submitter_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
+    review_status: Mapped[str | None] = mapped_column(String(20), index=True)
+    review_note: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     view_count: Mapped[int] = mapped_column(Integer, default=0, comment="浏览量，由 Redis 批量回写")
     like_count: Mapped[int] = mapped_column(Integer, default=0, comment="点赞数")
     collect_count: Mapped[int] = mapped_column(Integer, default=0, comment="收藏数")

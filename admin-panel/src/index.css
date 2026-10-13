@@ -531,3 +531,11 @@ textarea {
 .run-filters input, .run-filters select { width: auto; }
 .run-reason { max-width: 300px; margin-top: 4px; white-space: normal; overflow-wrap: anywhere; color: var(--color-text-secondary); }
 @media (max-width: 1000px) { .run-summary { grid-template-columns: repeat(4, 1fr); } }
+
+.submission-card { padding: 20px; margin-bottom: 16px; }
+.submission-card h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+.submission-images { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.submission-images img { display: block; width: 150px; height: 180px; object-fit: contain; border: 1px solid var(--color-border); border-radius: var(--radius); }
+.submission-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.submission-card summary { cursor: pointer; margin-bottom: 12px; }
+.submission-card form { margin-top: 18px; }

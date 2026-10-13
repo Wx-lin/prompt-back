@@ -136,8 +136,14 @@ async def upload_author_avatar(remote_url: str) -> str:
     """Copy a crawler-supplied platform avatar to COS before publishing it."""
     host = (urlparse(remote_url).hostname or "").lower()
     allowed_suffixes = (
-        "xhscdn.com", "sinaimg.cn", "weibo.cn", "kscdn.com", "gifshow.com", "kwaicdn.com",
-        "yximgs.com", "kwimgs.com",
+        "xhscdn.com",
+        "sinaimg.cn",
+        "weibo.cn",
+        "kscdn.com",
+        "gifshow.com",
+        "kwaicdn.com",
+        "yximgs.com",
+        "kwimgs.com",
     )
     if not remote_url.startswith("https://") or not any(
         host == suffix or host.endswith("." + suffix) for suffix in allowed_suffixes
@@ -163,3 +169,35 @@ async def upload_author_avatar(remote_url: str) -> str:
     extension = mimetypes.guess_extension(content_type) or ".jpg"
     object_key = f"author-avatars/{uuid.uuid4().hex}{extension}"
     return await asyncio.to_thread(_upload_bytes_sync, b"".join(chunks), object_key, content_type)
+
+
+async def upload_submission_image(body: bytes, object_key: str) -> str:
+    """Unreviewed uploads are private even when the bucket default is public."""
+
+    def upload():
+        client = _build_client()
+        client.put_object(
+            Bucket=settings.cos_bucket, Body=body, Key=object_key, ContentType="image/jpeg", ACL="private"
+        )
+        return _public_url(object_key)
+
+    return await asyncio.to_thread(upload)
+
+
+def submission_preview_url(object_key: str) -> str:
+    return _build_client().get_presigned_url(
+        Method="GET", Bucket=settings.cos_bucket, Key=object_key, Expired=600
+    )
+
+
+async def set_submission_visibility(object_key: str, public: bool):
+    await asyncio.to_thread(
+        _build_client().put_object_acl,
+        Bucket=settings.cos_bucket,
+        Key=object_key,
+        ACL="public-read" if public else "private",
+    )
+
+
+async def delete_submission_image(object_key: str):
+    await asyncio.to_thread(_build_client().delete_object, Bucket=settings.cos_bucket, Key=object_key)

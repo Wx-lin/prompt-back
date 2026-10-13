@@ -11,7 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.database import AsyncSessionLocal
 from app.redis import get_redis_client
-from app.services import search_service, view_count_service
+from app.services import search_service, submission_cleanup, view_count_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,15 @@ async def _refresh_trending_job() -> None:
         logger.info("热门搜索词排行已刷新，共 %d 条", len(items))
 
 
+async def _submission_cleanup_job():
+    async with AsyncSessionLocal() as db:
+        await submission_cleanup.cleanup_assets(db)
+
+
 def create_scheduler() -> AsyncIOScheduler:
     """创建并配置好所有定时任务的调度器实例，由 main.py 负责启动和关闭。"""
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_flush_view_counts_job, "interval", minutes=5, id="flush_view_counts")
     scheduler.add_job(_refresh_trending_job, "interval", hours=1, id="refresh_trending")
+    scheduler.add_job(_submission_cleanup_job, "interval", minutes=30, id="submission_cleanup")
     return scheduler

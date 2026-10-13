@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import dayjs from 'dayjs'
+import ModelPicker from '../components/ModelPicker'
 import {
   listPrompts,
   createPrompt,
@@ -248,7 +249,6 @@ function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalP
     source_url: initial?.source_url ?? '',
     is_published: initial?.is_published ?? false,
   })
-  const [modelsInput, setModelsInput] = useState((initial?.models ?? []).join(', '))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -258,10 +258,7 @@ function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalP
     setError('')
     const body: PromptCreateInput = {
       ...form,
-      models: modelsInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
+      models: form.models,
       description: form.description || null,
       author_name: form.author_name || null,
       source_url: form.source_url || null,
@@ -330,12 +327,7 @@ function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalP
                 </select>
               </div>
               <div className="field">
-                <label>模型（逗号分隔）</label>
-                <input
-                  value={modelsInput}
-                  onChange={(e) => setModelsInput(e.target.value)}
-                  placeholder="即梦, Midjourney"
-                />
+                <ModelPicker value={form.models ?? []} onChange={(value) => set('models', value)} />
               </div>
             </div>
 

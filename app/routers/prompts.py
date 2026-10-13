@@ -8,16 +8,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from redis.asyncio import Redis
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import ContentReport, Prompt, User
+from app.models import ContentReport, User
 from app.redis import get_redis_client
 from app.schemas.prompt import (
     PromptDetailOut,
-    PromptListItem,
     PromptListResponse,
     ReportCreate,
     SortOption,
@@ -51,44 +48,15 @@ async def list_prompts(
 @router.get("/search", response_model=PromptListResponse)
 async def search_prompts(
     q: str = Query(..., min_length=1, description="搜索关键词"),
+    category: str | None = Query(default=None),
+    models: list[str] | None = Query(default=None),
+    sort: SortOption = Query(default=SortOption.LATEST),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ) -> PromptListResponse:
-    """按标题/描述模糊搜索，对应 PRD 3.4。"""
-    base_query = select(Prompt).where(
-        Prompt.is_published.is_(True),
-        or_(Prompt.title.ilike(f"%{q}%"), Prompt.description.ilike(f"%{q}%")),
-    )
-
-    total = (await db.execute(select(func.count()).select_from(base_query.subquery()))).scalar_one()
-    rows = (
-        (
-            await db.execute(
-                base_query.options(selectinload(Prompt.images))
-                .order_by(Prompt.created_at.desc())
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    items = [
-        PromptListItem(
-            id=row.id,
-            title=row.title,
-            category=row.category,
-            models=row.models,
-            thumbnail_url=row.images[0].thumbnail_url if row.images else None,
-            like_count=row.like_count,
-            view_count=row.view_count,
-            author_name=row.author_name,
-            created_at=row.created_at,
-        )
-        for row in rows
-    ]
+    """Search, filters and ordering share the feed query before pagination."""
+    items, total = await prompt_service.list_prompts(db, category, models, sort, page, page_size, search=q)
     return PromptListResponse(
         items=items, total=total, page=page, page_size=page_size, has_more=page * page_size < total
     )

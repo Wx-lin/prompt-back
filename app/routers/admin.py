@@ -40,6 +40,7 @@ from app.schemas.crawl_task import (
     CrawlTaskStartRequest,
 )
 from app.services import admin_service, crawl_service, crawl_task_service
+from app.services.submission_service import SubmissionConflict
 from app.utils.admin_auth import verify_admin_key
 
 router = APIRouter(
@@ -149,7 +150,10 @@ async def update_prompt(
     prompt_id: uuid.UUID, body: AdminPromptUpdate, db: AsyncSession = Depends(get_db)
 ) -> AdminPromptOut:
     """编辑一条内容，支持部分字段更新。"""
-    prompt = await admin_service.update_prompt(db, prompt_id, body)
+    try:
+        prompt = await admin_service.update_prompt(db, prompt_id, body)
+    except SubmissionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     if prompt is None:
         raise HTTPException(status_code=404, detail="内容不存在")
     return AdminPromptOut.model_validate(prompt)
@@ -158,7 +162,10 @@ async def update_prompt(
 @router.post("/prompts/{prompt_id}/publish", response_model=AdminPromptOut)
 async def publish_prompt(prompt_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> AdminPromptOut:
     """一键发布：审核通过后把草稿态内容上线，比完整的编辑接口更轻量。"""
-    prompt = await admin_service.set_published(db, prompt_id, True)
+    try:
+        prompt = await admin_service.set_published(db, prompt_id, True)
+    except SubmissionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     if prompt is None:
         raise HTTPException(status_code=404, detail="内容不存在")
     return AdminPromptOut.model_validate(prompt)
@@ -167,7 +174,10 @@ async def publish_prompt(prompt_id: uuid.UUID, db: AsyncSession = Depends(get_db
 @router.post("/prompts/{prompt_id}/unpublish", response_model=AdminPromptOut)
 async def unpublish_prompt(prompt_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> AdminPromptOut:
     """下架：把已发布内容撤回为草稿态，用户侧立即不可见。"""
-    prompt = await admin_service.set_published(db, prompt_id, False)
+    try:
+        prompt = await admin_service.set_published(db, prompt_id, False)
+    except SubmissionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
     if prompt is None:
         raise HTTPException(status_code=404, detail="内容不存在")
     return AdminPromptOut.model_validate(prompt)

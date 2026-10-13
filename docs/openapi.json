@@ -1,1 +1,5194 @@
-{"openapi":"3.1.0","info":{"title":"AIGC提示词 API","description":"aigc-prompt.com 后端服务，详见项目根目录 README.md 和 docs/ 下的设计文档。","version":"0.1.0"},"paths":{"/api/prompts":{"get":{"tags":["prompts"],"summary":"List Prompts","description":"首页瀑布流 / 分类筛选 / 模型筛选的统一分页查询入口，对应 PRD 3.1、3.3。","operationId":"list_prompts_api_prompts_get","parameters":[{"name":"category","in":"query","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"description":"分类过滤，不传则全部","title":"Category"},"description":"分类过滤，不传则全部"},{"name":"models","in":"query","required":false,"schema":{"anyOf":[{"type":"array","items":{"type":"string"}},{"type":"null"}],"description":"模型标签过滤，多选 OR 逻辑","title":"Models"},"description":"模型标签过滤，多选 OR 逻辑"},{"name":"sort","in":"query","required":false,"schema":{"$ref":"#/components/schemas/SortOption","default":"latest"}},{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"default":1,"title":"Page"}},{"name":"page_size","in":"query","required":false,"schema":{"type":"integer","maximum":50,"minimum":1,"default":20,"title":"Page Size"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PromptListResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/search":{"get":{"tags":["prompts"],"summary":"Search Prompts","description":"按标题/描述模糊搜索，对应 PRD 3.4。","operationId":"search_prompts_api_prompts_search_get","parameters":[{"name":"q","in":"query","required":true,"schema":{"type":"string","minLength":1,"description":"搜索关键词","title":"Q"},"description":"搜索关键词"},{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"default":1,"title":"Page"}},{"name":"page_size","in":"query","required":false,"schema":{"type":"integer","maximum":50,"minimum":1,"default":20,"title":"Page Size"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PromptListResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/{prompt_id}":{"get":{"tags":["prompts"],"summary":"Get Prompt Detail","description":"详情弹窗数据，对应 PRD 3.2。匿名可访问，登录用户会额外返回是否已点赞/收藏。","operationId":"get_prompt_detail_api_prompts__prompt_id__get","security":[{"HTTPBearer":[]}],"parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PromptDetailOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/{prompt_id}/similar":{"get":{"tags":["prompts"],"summary":"Get Similar","description":"详情弹窗\"更多相似\"区域数据，对应 PRD 3.2。","operationId":"get_similar_api_prompts__prompt_id__similar_get","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"type":"array","items":{},"title":"Response Get Similar Api Prompts  Prompt Id  Similar Get"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/{prompt_id}/view":{"post":{"tags":["prompts"],"summary":"Record View","description":"记录一次浏览，匿名也可调用，用于浏览量统计（对应 PRD 排序\"按浏览量\"）。","operationId":"record_view_api_prompts__prompt_id__view_post","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/{prompt_id}/like":{"post":{"tags":["prompts"],"summary":"Like Prompt","description":"点赞，需登录。对应 PRD 3.6。","operationId":"like_prompt_api_prompts__prompt_id__like_post","security":[{"HTTPBearer":[]}],"parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}},"delete":{"tags":["prompts"],"summary":"Unlike Prompt","description":"取消点赞，需登录。","operationId":"unlike_prompt_api_prompts__prompt_id__like_delete","security":[{"HTTPBearer":[]}],"parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/{prompt_id}/collect":{"post":{"tags":["prompts"],"summary":"Collect Prompt","description":"收藏，需登录。对应 PRD 3.6。","operationId":"collect_prompt_api_prompts__prompt_id__collect_post","security":[{"HTTPBearer":[]}],"parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}},"delete":{"tags":["prompts"],"summary":"Uncollect Prompt","description":"取消收藏，需登录。","operationId":"uncollect_prompt_api_prompts__prompt_id__collect_delete","security":[{"HTTPBearer":[]}],"parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/prompts/{prompt_id}/report":{"post":{"tags":["prompts"],"summary":"Report Prompt","description":"举报/下架申诉，对应 PRD 3.2\"内容有误或需要下架？联系我们\"（P0）。\n\n不要求登录，任何人（包括原作者本人）都可以直接提交申诉，运营方人工处理\n（见 PRD 3.5\"下架申诉处理\"：24-48 小时内处理）。","operationId":"report_prompt_api_prompts__prompt_id__report_post","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReportCreate"}}}},"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/auth/send-code":{"post":{"tags":["auth"],"summary":"Send Code","description":"发送邮箱验证码，60 秒限流一次，对应 PRD 3.6 邮箱登录流程第一步。","operationId":"send_code_api_auth_send_code_post","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SendCodeRequest"}}},"required":true},"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/auth/verify-code":{"post":{"tags":["auth"],"summary":"Verify Code","description":"校验邮箱验证码，成功则登录即注册，返回 JWT。","operationId":"verify_code_api_auth_verify_code_post","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/VerifyCodeRequest"}}},"required":true},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/TokenResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/auth/google":{"post":{"tags":["auth"],"summary":"Google Login","description":"Google 登录：验证前端传来的 id_token，成功则登录即注册，返回 JWT。","operationId":"google_login_api_auth_google_post","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/GoogleLoginRequest"}}},"required":true},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/TokenResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/auth/me":{"get":{"tags":["auth"],"summary":"Get Me","description":"获取当前登录用户信息。","operationId":"get_me_api_auth_me_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/UserOut"}}}}},"security":[{"HTTPBearer":[]}]}},"/api/users/me/collects":{"get":{"tags":["users"],"summary":"Get My Collects","description":"获取当前用户收藏的所有内容，瀑布流样式，按收藏时间倒序。","operationId":"get_my_collects_api_users_me_collects_get","security":[{"HTTPBearer":[]}],"parameters":[{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"default":1,"title":"Page"}},{"name":"page_size","in":"query","required":false,"schema":{"type":"integer","maximum":50,"minimum":1,"default":20,"title":"Page Size"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/PromptListResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/categories":{"get":{"tags":["categories"],"summary":"List Categories","description":"返回分类列表及每个分类下已发布的内容数量，用于首页分类标签展示计数。","operationId":"list_categories_api_categories_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"items":{"additionalProperties":true,"type":"object"},"type":"array","title":"Response List Categories Api Categories Get"}}}}}}},"/api/search/trending":{"get":{"tags":["search"],"summary":"Get Trending","description":"获取热门搜索词列表，供搜索弹窗打开时默认展示。\n\n数据来自定时任务离线聚合后写入的 Redis 缓存，本接口只读缓存，\n不做实时数据库聚合查询（避免拖慢搜索弹窗的打开速度）。","operationId":"get_trending_api_search_trending_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/TrendingResponse"}}}}}}},"/api/search/log":{"post":{"tags":["search"],"summary":"Log Search","description":"记录一次实际搜索行为（用户按 Enter 或点击搜索结果时前端调用），\n匿名也可调用，用于后续统计热门搜索词排行。","operationId":"log_search_api_search_log_post","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SearchLogRequest"}}},"required":true},"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}},"security":[{"HTTPBearer":[]}]}},"/api/admin/prompts":{"get":{"tags":["admin"],"summary":"List Prompts","description":"后台内容列表，默认按创建时间倒序，可用 is_published=false 筛选出\"待审核草稿\"。","operationId":"list_prompts_api_admin_prompts_get","parameters":[{"name":"is_published","in":"query","required":false,"schema":{"anyOf":[{"type":"boolean"},{"type":"null"}],"description":"筛选发布状态，不传则返回全部（含草稿）","title":"Is Published"},"description":"筛选发布状态，不传则返回全部（含草稿）"},{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"default":1,"title":"Page"}},{"name":"page_size","in":"query","required":false,"schema":{"type":"integer","maximum":100,"minimum":1,"default":20,"title":"Page Size"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptListResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}},"post":{"tags":["admin"],"summary":"Create Prompt","description":"创建一条新内容，对应采集流程\"人工审核确认后入库\"这一步\n（见 docs/aigc-prompt-爬虫方案.md）。默认 is_published=False，先是草稿态。","operationId":"create_prompt_api_admin_prompts_post","parameters":[{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptCreate"}}}},"responses":{"201":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/admin/prompts/{prompt_id}":{"get":{"tags":["admin"],"summary":"Get Prompt","description":"后台查看单条内容详情（含草稿态），编辑前通常先调用这个拿到当前完整数据。","operationId":"get_prompt_api_admin_prompts__prompt_id__get","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}},"patch":{"tags":["admin"],"summary":"Update Prompt","description":"编辑一条内容，支持部分字段更新。","operationId":"update_prompt_api_admin_prompts__prompt_id__patch","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptUpdate"}}}},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}},"delete":{"tags":["admin"],"summary":"Delete Prompt","description":"彻底删除一条内容（级联删除关联的效果图和举报记录），不可恢复。","operationId":"delete_prompt_api_admin_prompts__prompt_id__delete","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"responses":{"204":{"description":"Successful Response"},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/admin/prompts/{prompt_id}/publish":{"post":{"tags":["admin"],"summary":"Publish Prompt","description":"一键发布：审核通过后把草稿态内容上线，比完整的编辑接口更轻量。","operationId":"publish_prompt_api_admin_prompts__prompt_id__publish_post","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/admin/prompts/{prompt_id}/unpublish":{"post":{"tags":["admin"],"summary":"Unpublish Prompt","description":"下架：把已发布内容撤回为草稿态，用户侧立即不可见。","operationId":"unpublish_prompt_api_admin_prompts__prompt_id__unpublish_post","parameters":[{"name":"prompt_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Prompt Id"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminPromptOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/admin/reports":{"get":{"tags":["admin"],"summary":"List Reports","description":"后台举报列表，对应 PRD 3.5\"下架申诉处理\"（P0，24-48h 内处理）。\n默认按创建时间倒序，可用 status=pending 筛选出\"待处理\"的举报。","operationId":"list_reports_api_admin_reports_get","parameters":[{"name":"status","in":"query","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"description":"筛选处理状态：pending / resolved，不传则返回全部","title":"Status"},"description":"筛选处理状态：pending / resolved，不传则返回全部"},{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"default":1,"title":"Page"}},{"name":"page_size","in":"query","required":false,"schema":{"type":"integer","maximum":100,"minimum":1,"default":20,"title":"Page Size"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminReportListResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/admin/reports/{report_id}/handle":{"post":{"tags":["admin"],"summary":"Handle Report","description":"处理一条举报：标记为已处理，记录处理备注；unpublish_prompt=True 时联动下架对应内容。","operationId":"handle_report_api_admin_reports__report_id__handle_post","parameters":[{"name":"report_id","in":"path","required":true,"schema":{"type":"string","format":"uuid","title":"Report Id"}},{"name":"x-admin-key","in":"header","required":false,"schema":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"X-Admin-Key"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminReportHandle"}}}},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AdminReportOut"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/health":{"get":{"summary":"Health Check","description":"健康检查接口，供部署平台/负载均衡器探活使用。","operationId":"health_check_health_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"additionalProperties":true,"type":"object","title":"Response Health Check Health Get"}}}}}}}},"components":{"schemas":{"AdminPromptCreate":{"properties":{"title":{"type":"string","title":"Title"},"prompt_text":{"type":"string","title":"Prompt Text"},"description":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Description"},"category":{"type":"string","title":"Category"},"models":{"items":{"type":"string"},"type":"array","title":"Models","default":[]},"author_name":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Author Name"},"source_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Source Url"},"is_published":{"type":"boolean","title":"Is Published","default":false},"images":{"items":{"$ref":"#/components/schemas/AdminPromptImageIn"},"type":"array","title":"Images","default":[]}},"type":"object","required":["title","prompt_text","category"],"title":"AdminPromptCreate","description":"后台创建一条新内容的请求体，对应采集流程里\"人工审核确认后入库\"这一步\n（见 docs/aigc-prompt-爬虫方案.md 3.3 节）。\n\nis_published 默认 False：新建的内容先是草稿态，审核员确认无误后再调用\n发布接口上线，避免有问题的内容直接出现在用户可见的首页上。"},"AdminPromptImageIn":{"properties":{"image_url":{"type":"string","title":"Image Url"},"thumbnail_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Thumbnail Url"},"sort_order":{"type":"integer","title":"Sort Order","default":0}},"type":"object","required":["image_url"],"title":"AdminPromptImageIn","description":"创建/编辑内容时，效果图的输入结构（图片需要先上传到 OSS 拿到 URL，再传给这个接口）。"},"AdminPromptListResponse":{"properties":{"items":{"items":{"$ref":"#/components/schemas/AdminPromptOut"},"type":"array","title":"Items"},"total":{"type":"integer","title":"Total"},"page":{"type":"integer","title":"Page"},"page_size":{"type":"integer","title":"Page Size"}},"type":"object","required":["items","total","page","page_size"],"title":"AdminPromptListResponse","description":"后台内容列表的分页响应，复用 AdminPromptOut 作为列表项。"},"AdminPromptOut":{"properties":{"id":{"type":"string","format":"uuid","title":"Id"},"title":{"type":"string","title":"Title"},"prompt_text":{"type":"string","title":"Prompt Text"},"description":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Description"},"category":{"type":"string","title":"Category"},"models":{"items":{"type":"string"},"type":"array","title":"Models"},"author_name":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Author Name"},"source_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Source Url"},"is_published":{"type":"boolean","title":"Is Published"},"view_count":{"type":"integer","title":"View Count"},"like_count":{"type":"integer","title":"Like Count"},"collect_count":{"type":"integer","title":"Collect Count"},"created_at":{"type":"string","format":"date-time","title":"Created At"},"updated_at":{"type":"string","format":"date-time","title":"Updated At"}},"type":"object","required":["id","title","prompt_text","category","models","is_published","view_count","like_count","collect_count","created_at","updated_at"],"title":"AdminPromptOut","description":"后台内容列表/详情的完整响应结构，比对外的 PromptDetailOut 多暴露 is_published 等管理字段。"},"AdminPromptUpdate":{"properties":{"title":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Title"},"prompt_text":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Prompt Text"},"description":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Description"},"category":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Category"},"models":{"anyOf":[{"items":{"type":"string"},"type":"array"},{"type":"null"}],"title":"Models"},"author_name":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Author Name"},"source_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Source Url"},"is_published":{"anyOf":[{"type":"boolean"},{"type":"null"}],"title":"Is Published"},"images":{"anyOf":[{"items":{"$ref":"#/components/schemas/AdminPromptImageIn"},"type":"array"},{"type":"null"}],"title":"Images"}},"type":"object","title":"AdminPromptUpdate","description":"后台编辑一条内容的请求体，所有字段均可选，只传需要修改的字段（PATCH 语义）。\n\nimages 字段如果传了，会整体替换掉原有的效果图列表（不支持单张图片增删，\nMVP 阶段够用，图片数量通常不多，整体替换操作更简单）。"},"AdminReportHandle":{"properties":{"handled_note":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Handled Note"},"unpublish_prompt":{"type":"boolean","title":"Unpublish Prompt","default":false}},"type":"object","title":"AdminReportHandle","description":"处理举报的请求体，对应 PRD 3.5\"下架申诉处理\"（P0，24-48h 内处理）。\n\nunpublish_prompt=True 时，会联动把对应的 Prompt.is_published 置为 False，\n一步完成\"审核通过举报理由 → 下架内容\"，不需要再额外调一次编辑接口。"},"AdminReportListResponse":{"properties":{"items":{"items":{"$ref":"#/components/schemas/AdminReportOut"},"type":"array","title":"Items"},"total":{"type":"integer","title":"Total"},"page":{"type":"integer","title":"Page"},"page_size":{"type":"integer","title":"Page Size"}},"type":"object","required":["items","total","page","page_size"],"title":"AdminReportListResponse","description":"后台举报列表的分页响应。"},"AdminReportOut":{"properties":{"id":{"type":"string","format":"uuid","title":"Id"},"prompt_id":{"type":"string","format":"uuid","title":"Prompt Id"},"prompt_title":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Prompt Title"},"reporter_email":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Reporter Email"},"reason":{"type":"string","title":"Reason"},"status":{"type":"string","title":"Status"},"handled_note":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Handled Note"},"created_at":{"type":"string","format":"date-time","title":"Created At"},"handled_at":{"anyOf":[{"type":"string","format":"date-time"},{"type":"null"}],"title":"Handled At"}},"type":"object","required":["id","prompt_id","reason","status","created_at"],"title":"AdminReportOut","description":"后台举报列表的响应结构，附带被举报内容的标题，方便运营方不用再跳转查询。"},"GoogleLoginRequest":{"properties":{"id_token":{"type":"string","title":"Id Token"}},"type":"object","required":["id_token"],"title":"GoogleLoginRequest","description":"Google 登录请求体，id_token 由前端 Google 登录 SDK 返回后转发给后端验证。"},"HTTPValidationError":{"properties":{"detail":{"items":{"$ref":"#/components/schemas/ValidationError"},"type":"array","title":"Detail"}},"type":"object","title":"HTTPValidationError"},"PromptDetailOut":{"properties":{"id":{"type":"string","format":"uuid","title":"Id"},"title":{"type":"string","title":"Title"},"prompt_text":{"type":"string","title":"Prompt Text"},"description":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Description"},"category":{"type":"string","title":"Category"},"models":{"items":{"type":"string"},"type":"array","title":"Models"},"author_name":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Author Name"},"source_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Source Url"},"like_count":{"type":"integer","title":"Like Count"},"view_count":{"type":"integer","title":"View Count"},"collect_count":{"type":"integer","title":"Collect Count"},"created_at":{"type":"string","format":"date-time","title":"Created At"},"images":{"items":{"$ref":"#/components/schemas/PromptImageOut"},"type":"array","title":"Images"},"is_liked":{"type":"boolean","title":"Is Liked","default":false},"is_collected":{"type":"boolean","title":"Is Collected","default":false}},"type":"object","required":["id","title","prompt_text","category","models","like_count","view_count","collect_count","created_at","images"],"title":"PromptDetailOut","description":"详情弹窗所需的完整字段，对应 PRD 3.2。\n\nis_liked / is_collected 字段仅在用户已登录时才有意义，未登录时固定为 False，\n由路由层根据当前用户上下文动态填充，不在模型本身存储。"},"PromptImageOut":{"properties":{"id":{"type":"string","format":"uuid","title":"Id"},"image_url":{"type":"string","title":"Image Url"},"thumbnail_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Thumbnail Url"},"sort_order":{"type":"integer","title":"Sort Order"}},"type":"object","required":["id","image_url","sort_order"],"title":"PromptImageOut","description":"效果图信息，用于详情接口。"},"PromptListItem":{"properties":{"id":{"type":"string","format":"uuid","title":"Id"},"title":{"type":"string","title":"Title"},"category":{"type":"string","title":"Category"},"models":{"items":{"type":"string"},"type":"array","title":"Models"},"thumbnail_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Thumbnail Url"},"like_count":{"type":"integer","title":"Like Count"},"view_count":{"type":"integer","title":"View Count"},"author_name":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Author Name"},"created_at":{"type":"string","format":"date-time","title":"Created At"}},"type":"object","required":["id","title","category","models","like_count","view_count","created_at"],"title":"PromptListItem","description":"首页瀑布流卡片所需的精简字段，不包含提示词原文（减小响应体积）。"},"PromptListResponse":{"properties":{"items":{"items":{"$ref":"#/components/schemas/PromptListItem"},"type":"array","title":"Items"},"total":{"type":"integer","title":"Total"},"page":{"type":"integer","title":"Page"},"page_size":{"type":"integer","title":"Page Size"},"has_more":{"type":"boolean","title":"Has More"}},"type":"object","required":["items","total","page","page_size","has_more"],"title":"PromptListResponse","description":"首页/分类页/搜索结果的分页响应结构。"},"ReportCreate":{"properties":{"reporter_email":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Reporter Email"},"reason":{"type":"string","title":"Reason"}},"type":"object","required":["reason"],"title":"ReportCreate","description":"举报/下架申诉请求体，对应 PRD 3.2\"内容有误或需要下架？联系我们\"。"},"SearchLogRequest":{"properties":{"keyword":{"type":"string","title":"Keyword"}},"type":"object","required":["keyword"],"title":"SearchLogRequest","description":"记录一次实际搜索行为，用于后续统计热门搜索词排行。"},"SendCodeRequest":{"properties":{"email":{"type":"string","format":"email","title":"Email"}},"type":"object","required":["email"],"title":"SendCodeRequest","description":"发送邮箱验证码请求体。"},"SortOption":{"type":"string","enum":["latest","popular","hot"],"title":"SortOption","description":"首页/分类页排序方式，对应 PRD 3.1 的\"最新/热门/浏览量\"三种切换。"},"TokenResponse":{"properties":{"access_token":{"type":"string","title":"Access Token"},"token_type":{"type":"string","title":"Token Type","default":"bearer"}},"type":"object","required":["access_token"],"title":"TokenResponse","description":"登录成功后的响应，前端存入 localStorage。"},"TrendItem":{"properties":{"keyword":{"type":"string","title":"Keyword"},"rank":{"type":"integer","title":"Rank"},"trend":{"type":"string","title":"Trend"}},"type":"object","required":["keyword","rank","trend"],"title":"TrendItem","description":"单个热门搜索词，trend 字段驱动前端箭头图标（up/down/flat）。"},"TrendingResponse":{"properties":{"items":{"items":{"$ref":"#/components/schemas/TrendItem"},"type":"array","title":"Items"}},"type":"object","required":["items"],"title":"TrendingResponse","description":"热门搜索词列表响应，对应搜索弹窗的\"热门搜索\"区域。"},"UserOut":{"properties":{"id":{"type":"string","format":"uuid","title":"Id"},"email":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Email"},"nickname":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Nickname"},"avatar_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Avatar Url"},"created_at":{"type":"string","format":"date-time","title":"Created At"}},"type":"object","required":["id","created_at"],"title":"UserOut","description":"当前用户信息，对应 GET /api/auth/me。"},"ValidationError":{"properties":{"loc":{"items":{"anyOf":[{"type":"string"},{"type":"integer"}]},"type":"array","title":"Location"},"msg":{"type":"string","title":"Message"},"type":{"type":"string","title":"Error Type"},"input":{"title":"Input"},"ctx":{"type":"object","title":"Context"}},"type":"object","required":["loc","msg","type"],"title":"ValidationError"},"VerifyCodeRequest":{"properties":{"email":{"type":"string","format":"email","title":"Email"},"code":{"type":"string","title":"Code"}},"type":"object","required":["email","code"],"title":"VerifyCodeRequest","description":"验证邮箱验证码并登录/注册请求体。"}},"securitySchemes":{"HTTPBearer":{"type":"http","scheme":"bearer"}}}}
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AIGC提示词 API",
+    "description": "aigc-prompt.com 后端服务，详见项目根目录 README.md 和 docs/ 下的设计文档。",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/submissions/upload": {
+      "post": {
+        "tags": [
+          "submissions"
+        ],
+        "summary": "Upload Image",
+        "operationId": "upload_image_api_submissions_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_api_submissions_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionUploadOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/submissions": {
+      "post": {
+        "tags": [
+          "submissions"
+        ],
+        "summary": "Submit",
+        "operationId": "submit_api_submissions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmissionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "submissions"
+        ],
+        "summary": "Mine",
+        "operationId": "mine_api_submissions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/submissions": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Submissions",
+        "operationId": "list_submissions_api_admin_submissions_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/submissions/{prompt_id}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve",
+        "operationId": "approve_api_admin_submissions__prompt_id__approve_post",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/submissions/{prompt_id}/reject": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reject",
+        "operationId": "reject_api_admin_submissions__prompt_id__reject_post",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmissionReject"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "List Prompts",
+        "description": "首页瀑布流 / 分类筛选 / 模型筛选的统一分页查询入口，对应 PRD 3.1、3.3。",
+        "operationId": "list_prompts_api_prompts_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "分类过滤，不传则全部",
+              "title": "Category"
+            },
+            "description": "分类过滤，不传则全部"
+          },
+          {
+            "name": "models",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "模型标签过滤，多选 OR 逻辑",
+              "title": "Models"
+            },
+            "description": "模型标签过滤，多选 OR 逻辑"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOption",
+              "default": "latest"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/search": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Search Prompts",
+        "description": "Search, filters and ordering share the feed query before pagination.",
+        "operationId": "search_prompts_api_prompts_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "搜索关键词",
+              "title": "Q"
+            },
+            "description": "搜索关键词"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "models",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Models"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOption",
+              "default": "latest"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/{prompt_id}": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Get Prompt Detail",
+        "description": "详情弹窗数据，对应 PRD 3.2。匿名可访问，登录用户会额外返回是否已点赞/收藏。",
+        "operationId": "get_prompt_detail_api_prompts__prompt_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/{prompt_id}/similar": {
+      "get": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Get Similar",
+        "description": "详情弹窗\"更多相似\"区域数据，对应 PRD 3.2。",
+        "operationId": "get_similar_api_prompts__prompt_id__similar_get",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {},
+                  "title": "Response Get Similar Api Prompts  Prompt Id  Similar Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/{prompt_id}/view": {
+      "post": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Record View",
+        "description": "记录一次浏览，匿名也可调用，用于浏览量统计（对应 PRD 排序\"按浏览量\"）。",
+        "operationId": "record_view_api_prompts__prompt_id__view_post",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/{prompt_id}/like": {
+      "post": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Like Prompt",
+        "description": "点赞，需登录。对应 PRD 3.6。",
+        "operationId": "like_prompt_api_prompts__prompt_id__like_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Unlike Prompt",
+        "description": "取消点赞，需登录。",
+        "operationId": "unlike_prompt_api_prompts__prompt_id__like_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/{prompt_id}/collect": {
+      "post": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Collect Prompt",
+        "description": "收藏，需登录。对应 PRD 3.6。",
+        "operationId": "collect_prompt_api_prompts__prompt_id__collect_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Uncollect Prompt",
+        "description": "取消收藏，需登录。",
+        "operationId": "uncollect_prompt_api_prompts__prompt_id__collect_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prompts/{prompt_id}/report": {
+      "post": {
+        "tags": [
+          "prompts"
+        ],
+        "summary": "Report Prompt",
+        "description": "举报/下架申诉，对应 PRD 3.2\"内容有误或需要下架？联系我们\"（P0）。\n\n不要求登录，任何人（包括原作者本人）都可以直接提交申诉，运营方人工处理\n（见 PRD 3.5\"下架申诉处理\"：24-48 小时内处理）。",
+        "operationId": "report_prompt_api_prompts__prompt_id__report_post",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/send-code": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Send Code",
+        "description": "发送邮箱验证码，60 秒限流一次，对应 PRD 3.6 邮箱登录流程第一步。",
+        "operationId": "send_code_api_auth_send_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verify-code": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Verify Code",
+        "description": "校验邮箱验证码，成功则登录即注册，返回 JWT。",
+        "operationId": "verify_code_api_auth_verify_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Google Login",
+        "description": "Google 登录：验证前端传来的 id_token，成功则登录即注册，返回 JWT。",
+        "operationId": "google_login_api_auth_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get Me",
+        "description": "获取当前登录用户信息。",
+        "operationId": "get_me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/users/me/collects": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get My Collects",
+        "description": "获取当前用户收藏的所有内容，瀑布流样式，按收藏时间倒序。",
+        "operationId": "get_my_collects_api_users_me_collects_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "List Categories",
+        "description": "返回分类列表及每个分类下已发布的内容数量，用于首页分类标签展示计数。",
+        "operationId": "list_categories_api_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Categories Api Categories Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "List Models",
+        "operationId": "list_models_api_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response List Models Api Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search/trending": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Get Trending",
+        "description": "获取热门搜索词列表，供搜索弹窗打开时默认展示。\n\n数据来自定时任务离线聚合后写入的 Redis 缓存，本接口只读缓存，\n不做实时数据库聚合查询（避免拖慢搜索弹窗的打开速度）。",
+        "operationId": "get_trending_api_search_trending_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendingResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search/log": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Log Search",
+        "description": "记录一次实际搜索行为（用户按 Enter 或点击搜索结果时前端调用），\n匿名也可调用，用于后续统计热门搜索词排行。",
+        "operationId": "log_search_api_search_log_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchLogRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/prompts": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Prompts",
+        "description": "后台内容列表，默认按创建时间倒序，可用 is_published=false 筛选出\"待审核草稿\"。",
+        "operationId": "list_prompts_api_admin_prompts_get",
+        "parameters": [
+          {
+            "name": "is_published",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "筛选发布状态，不传则返回全部（含草稿）",
+              "title": "Is Published"
+            },
+            "description": "筛选发布状态，不传则返回全部（含草稿）"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Create Prompt",
+        "description": "创建一条新内容，对应采集流程\"人工审核确认后入库\"这一步\n（见 docs/aigc-prompt-爬虫方案.md）。默认 is_published=False，先是草稿态。",
+        "operationId": "create_prompt_api_admin_prompts_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPromptCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/prompts/{prompt_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Prompt",
+        "description": "后台查看单条内容详情（含草稿态），编辑前通常先调用这个拿到当前完整数据。",
+        "operationId": "get_prompt_api_admin_prompts__prompt_id__get",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Update Prompt",
+        "description": "编辑一条内容，支持部分字段更新。",
+        "operationId": "update_prompt_api_admin_prompts__prompt_id__patch",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPromptUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Delete Prompt",
+        "description": "彻底删除一条内容（级联删除关联的效果图和举报记录），不可恢复。",
+        "operationId": "delete_prompt_api_admin_prompts__prompt_id__delete",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/prompts/{prompt_id}/publish": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Publish Prompt",
+        "description": "一键发布：审核通过后把草稿态内容上线，比完整的编辑接口更轻量。",
+        "operationId": "publish_prompt_api_admin_prompts__prompt_id__publish_post",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/prompts/{prompt_id}/unpublish": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Unpublish Prompt",
+        "description": "下架：把已发布内容撤回为草稿态，用户侧立即不可见。",
+        "operationId": "unpublish_prompt_api_admin_prompts__prompt_id__unpublish_post",
+        "parameters": [
+          {
+            "name": "prompt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Prompt Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/reports": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Reports",
+        "description": "后台举报列表，对应 PRD 3.5\"下架申诉处理\"（P0，24-48h 内处理）。\n默认按创建时间倒序，可用 status=pending 筛选出\"待处理\"的举报。",
+        "operationId": "list_reports_api_admin_reports_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "筛选处理状态：pending / resolved，不传则返回全部",
+              "title": "Status"
+            },
+            "description": "筛选处理状态：pending / resolved，不传则返回全部"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminReportListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/reports/{report_id}/handle": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Handle Report",
+        "description": "处理一条举报：标记为已处理，记录处理备注；unpublish_prompt=True 时联动下架对应内容。",
+        "operationId": "handle_report_api_admin_reports__report_id__handle_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminReportHandle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminReportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-drafts": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Crawl Drafts",
+        "description": "采集草稿列表，默认按创建时间倒序，常用 status=pending 筛选出\"待审核\"的草稿。",
+        "operationId": "list_crawl_drafts_api_admin_crawl_drafts_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "筛选状态：pending / approved / rejected，不传则返回全部",
+              "title": "Status"
+            },
+            "description": "筛选状态：pending / approved / rejected，不传则返回全部"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlDraftListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-drafts/{draft_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Crawl Draft",
+        "description": "查看单条草稿详情（含原始正文全文、所有配图），审核前先看完整素材。",
+        "operationId": "get_crawl_draft_api_admin_crawl_drafts__draft_id__get",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlDraftOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Update Crawl Draft",
+        "description": "人工审核时修正草稿字段（从原始正文里整理出提示词原文、标注分类和模型），\n不会创建正式内容，可以反复调用直到字段整理清楚为止。",
+        "operationId": "update_crawl_draft_api_admin_crawl_drafts__draft_id__patch",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlDraftReviewUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlDraftOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-drafts/{draft_id}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve Crawl Draft",
+        "description": "审核通过，把草稿转为正式的 Prompt 内容（默认仍是草稿态，需要再调发布接口上线）。\n\n草稿状态会同步变为 approved，防止重复转化；提示词原文/分类如果请求体没传，\n会用草稿上已经通过 PATCH 接口整理好的 extracted_* 字段。",
+        "operationId": "approve_crawl_draft_api_admin_crawl_drafts__draft_id__approve_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlDraftApprove"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPromptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-drafts/{draft_id}/reject": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reject Crawl Draft",
+        "description": "忽略一条草稿（不转为正式内容），用于筛掉抓到的低质量/不相关素材。",
+        "operationId": "reject_crawl_draft_api_admin_crawl_drafts__draft_id__reject_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlDraftRejectBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlDraftOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-platforms": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Crawl Platforms",
+        "description": "返回当前支持的采集平台列表，前端用这个渲染多选框（而不是硬编码在前端代码里），\n后端加/减支持的平台时前端不需要跟着改。",
+        "operationId": "list_crawl_platforms_api_admin_crawl_platforms_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlPlatformListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-tasks": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Start Crawl Task",
+        "description": "开始一批采集任务（按勾选的平台分别创建一条，共享同一个 batch_id），立即\n返回全部任务记录（status=pending/running），不等待采集完成。\n\n前端应该拿到返回的任务列表，对每个 task.id 分别轮询 GET /api/admin/crawl-tasks/{id}，\n直到所有任务都变为 success 或 failed。",
+        "operationId": "start_crawl_task_api_admin_crawl_tasks_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlTaskStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CrawlTaskOut"
+                  },
+                  "title": "Response Start Crawl Task Api Admin Crawl Tasks Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Crawl Tasks",
+        "description": "采集任务历史列表，按创建时间倒序，方便运营方回顾之前跑过哪些关键词。",
+        "operationId": "list_crawl_tasks_api_admin_crawl_tasks_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlTaskListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Crawl Task",
+        "description": "查询单个采集任务的当前状态，前端轮询用这个接口。",
+        "operationId": "get_crawl_task_api_admin_crawl_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlTaskOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-schedules": {
+      "get": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Schedules",
+        "operationId": "schedules_api_admin_crawl_schedules_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CrawlScheduleOut"
+                  },
+                  "title": "Response Schedules Api Admin Crawl Schedules Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Create",
+        "operationId": "create_api_admin_crawl_schedules_post",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlScheduleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlScheduleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-schedules/{schedule_id}": {
+      "patch": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Update",
+        "operationId": "update_api_admin_crawl_schedules__schedule_id__patch",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlScheduleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrawlScheduleOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-schedules/{schedule_id}/run": {
+      "post": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Run",
+        "operationId": "run_api_admin_crawl_schedules__schedule_id__run_post",
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CrawlTaskOut"
+                  },
+                  "title": "Response Run Api Admin Crawl Schedules  Schedule Id  Run Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-runs": {
+      "get": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Runs",
+        "operationId": "runs_api_admin_crawl_runs_get",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "schedule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Schedule Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-tasks/{task_id}/login": {
+      "get": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_admin_crawl_tasks__task_id__login_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-tasks/{task_id}/login-qr": {
+      "get": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Login Qr",
+        "operationId": "login_qr_api_admin_crawl_tasks__task_id__login_qr_get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/crawl-tasks/{task_id}/login/refresh": {
+      "post": {
+        "tags": [
+          "crawl-operations"
+        ],
+        "summary": "Refresh",
+        "operationId": "refresh_api_admin_crawl_tasks__task_id__login_refresh_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "健康检查接口，供部署平台/负载均衡器探活使用。",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Check Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdminPromptCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "prompt_text": {
+            "type": "string",
+            "title": "Prompt Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models",
+            "default": []
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Avatar Url"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published",
+            "default": false
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/AdminPromptImageIn"
+            },
+            "type": "array",
+            "title": "Images",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "prompt_text",
+          "category"
+        ],
+        "title": "AdminPromptCreate",
+        "description": "后台创建一条新内容的请求体，对应采集流程里\"人工审核确认后入库\"这一步\n（见 docs/aigc-prompt-爬虫方案.md 3.3 节）。\n\nis_published 默认 False：新建的内容先是草稿态，审核员确认无误后再调用\n发布接口上线，避免有问题的内容直接出现在用户可见的首页上。"
+      },
+      "AdminPromptImageIn": {
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_url"
+        ],
+        "title": "AdminPromptImageIn",
+        "description": "创建/编辑内容时，效果图的输入结构（图片需要先上传到 OSS 拿到 URL，再传给这个接口）。"
+      },
+      "AdminPromptListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminPromptOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AdminPromptListResponse",
+        "description": "后台内容列表的分页响应，复用 AdminPromptOut 作为列表项。"
+      },
+      "AdminPromptOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "prompt_text": {
+            "type": "string",
+            "title": "Prompt Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Avatar Url"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published"
+          },
+          "view_count": {
+            "type": "integer",
+            "title": "View Count"
+          },
+          "like_count": {
+            "type": "integer",
+            "title": "Like Count"
+          },
+          "collect_count": {
+            "type": "integer",
+            "title": "Collect Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "prompt_text",
+          "category",
+          "models",
+          "is_published",
+          "view_count",
+          "like_count",
+          "collect_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminPromptOut",
+        "description": "后台内容列表/详情的完整响应结构，比对外的 PromptDetailOut 多暴露 is_published 等管理字段。"
+      },
+      "AdminPromptUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "prompt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Avatar Url"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "is_published": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Published"
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdminPromptImageIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images"
+          }
+        },
+        "type": "object",
+        "title": "AdminPromptUpdate",
+        "description": "后台编辑一条内容的请求体，所有字段均可选，只传需要修改的字段（PATCH 语义）。\n\nimages 字段如果传了，会整体替换掉原有的效果图列表（不支持单张图片增删，\nMVP 阶段够用，图片数量通常不多，整体替换操作更简单）。"
+      },
+      "AdminReportHandle": {
+        "properties": {
+          "handled_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handled Note"
+          },
+          "unpublish_prompt": {
+            "type": "boolean",
+            "title": "Unpublish Prompt",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "AdminReportHandle",
+        "description": "处理举报的请求体，对应 PRD 3.5\"下架申诉处理\"（P0，24-48h 内处理）。\n\nunpublish_prompt=True 时，会联动把对应的 Prompt.is_published 置为 False，\n一步完成\"审核通过举报理由 → 下架内容\"，不需要再额外调一次编辑接口。"
+      },
+      "AdminReportListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminReportOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "AdminReportListResponse",
+        "description": "后台举报列表的分页响应。"
+      },
+      "AdminReportOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "prompt_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Prompt Id"
+          },
+          "prompt_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Title"
+          },
+          "reporter_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reporter Email"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "handled_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handled Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "handled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handled At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "prompt_id",
+          "reason",
+          "status",
+          "created_at"
+        ],
+        "title": "AdminReportOut",
+        "description": "后台举报列表的响应结构，附带被举报内容的标题，方便运营方不用再跳转查询。"
+      },
+      "Body_upload_image_api_submissions_upload_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_image_api_submissions_upload_post"
+      },
+      "CrawlDraftApprove": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "prompt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Text"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "is_published": {
+            "type": "boolean",
+            "title": "Is Published",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "CrawlDraftApprove",
+        "description": "审核通过、转为正式内容的请求体。\n\n必须先通过 CrawlDraftReviewUpdate 把 extracted_prompt_text / extracted_category\n补全（或者在这次请求里直接传入最终值，覆盖草稿上已有的值），否则会因为缺少\n必填字段被拒绝 —— 校验逻辑在 service 层，不在 schema 层做跨字段校验。"
+      },
+      "CrawlDraftImageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "image_url",
+          "sort_order"
+        ],
+        "title": "CrawlDraftImageOut",
+        "description": "草稿配图，image_url 由路由层拼接成可访问的本地静态文件地址（见 app/routers/admin.py）。"
+      },
+      "CrawlDraftListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CrawlDraftOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CrawlDraftListResponse",
+        "description": "草稿列表的分页响应。"
+      },
+      "CrawlDraftOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_platform": {
+            "type": "string",
+            "title": "Source Platform"
+          },
+          "source_note_id": {
+            "type": "string",
+            "title": "Source Note Id"
+          },
+          "source_url": {
+            "type": "string",
+            "title": "Source Url"
+          },
+          "raw_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Title"
+          },
+          "raw_content": {
+            "type": "string",
+            "title": "Raw Content"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Avatar Url"
+          },
+          "extracted_prompt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Prompt Text"
+          },
+          "extracted_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Category"
+          },
+          "extracted_models": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Models"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "approved_prompt_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Prompt Id"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/CrawlDraftImageOut"
+            },
+            "type": "array",
+            "title": "Images",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_platform",
+          "source_note_id",
+          "source_url",
+          "raw_content",
+          "status",
+          "created_at"
+        ],
+        "title": "CrawlDraftOut",
+        "description": "草稿详情/列表项的完整响应结构。"
+      },
+      "CrawlDraftRejectBody": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "CrawlDraftRejectBody",
+        "description": "忽略草稿时的请求体（可选备注）。"
+      },
+      "CrawlDraftReviewUpdate": {
+        "properties": {
+          "extracted_prompt_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Prompt Text"
+          },
+          "extracted_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Category"
+          },
+          "extracted_models": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extracted Models"
+          }
+        },
+        "type": "object",
+        "title": "CrawlDraftReviewUpdate",
+        "description": "人工审核时修正草稿字段的请求体，所有字段可选（PATCH 语义）。\n\n这一步不会创建正式内容，只是把审核员整理出的\"干净字段\"存回草稿，\n供下一步\"转为正式内容\"接口直接使用。"
+      },
+      "CrawlPlatformInfo": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "CrawlPlatformInfo",
+        "description": "一个可选平台的展示信息，供前端渲染勾选项时附带提示文案。"
+      },
+      "CrawlPlatformListResponse": {
+        "properties": {
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/CrawlPlatformInfo"
+            },
+            "type": "array",
+            "title": "Platforms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platforms"
+        ],
+        "title": "CrawlPlatformListResponse",
+        "description": "可用平台列表，前端加载页面时拉一次用于渲染勾选框。"
+      },
+      "CrawlScheduleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Platforms"
+          },
+          "keyword": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Keyword"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Keywords"
+          },
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Times"
+          },
+          "limit_count": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit Count",
+            "default": 20
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "auto_publish": {
+            "type": "boolean",
+            "title": "Auto Publish",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "platforms",
+          "keyword",
+          "times"
+        ],
+        "title": "CrawlScheduleCreate"
+      },
+      "CrawlScheduleOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Platforms"
+          },
+          "keyword": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Keyword"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Keywords"
+          },
+          "times": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Times"
+          },
+          "limit_count": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit Count",
+            "default": 20
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "auto_publish": {
+            "type": "boolean",
+            "title": "Auto Publish",
+            "default": true
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "platforms",
+          "keyword",
+          "times",
+          "id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CrawlScheduleOut"
+      },
+      "CrawlScheduleUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "platforms": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 3,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platforms"
+          },
+          "keyword": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keyword"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Keywords"
+          },
+          "times": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 12,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Times"
+          },
+          "limit_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 50.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Count"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "auto_publish": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Publish"
+          }
+        },
+        "type": "object",
+        "title": "CrawlScheduleUpdate"
+      },
+      "CrawlTaskListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CrawlTaskOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CrawlTaskListResponse",
+        "description": "采集任务历史列表的分页响应。"
+      },
+      "CrawlTaskOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Batch Id"
+          },
+          "source_platform": {
+            "type": "string",
+            "title": "Source Platform"
+          },
+          "keyword": {
+            "type": "string",
+            "title": "Keyword"
+          },
+          "limit_count": {
+            "type": "integer",
+            "title": "Limit Count"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "new_draft_count": {
+            "type": "integer",
+            "title": "New Draft Count"
+          },
+          "schedule_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Id"
+          },
+          "scheduled_for": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled For"
+          },
+          "trigger_type": {
+            "type": "string",
+            "title": "Trigger Type",
+            "default": "manual"
+          },
+          "published_count": {
+            "type": "integer",
+            "title": "Published Count",
+            "default": 0
+          },
+          "held_count": {
+            "type": "integer",
+            "title": "Held Count",
+            "default": 0
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "log_tail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Tail"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "batch_id",
+          "source_platform",
+          "keyword",
+          "limit_count",
+          "status",
+          "new_draft_count",
+          "created_at"
+        ],
+        "title": "CrawlTaskOut",
+        "description": "任务状态响应，前端用这个结构轮询任务进度。"
+      },
+      "CrawlTaskStartRequest": {
+        "properties": {
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Platforms",
+            "description": "平台列表：xiaohongshu / weibo / kuaishou"
+          },
+          "keyword": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Keyword",
+            "description": "搜索关键词"
+          },
+          "limit": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "description": "每个平台期望采集的笔记数量上限",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "platforms",
+          "keyword"
+        ],
+        "title": "CrawlTaskStartRequest",
+        "description": "开始一批采集任务的请求体，支持多选平台。\n\n勾选多个平台会创建多条任务（一个平台一条），共享同一个 batch_id，按顺序\n排队执行，详见 app/services/crawl_task_service.py 的 start_crawl_batch。"
+      },
+      "GoogleLoginRequest": {
+        "properties": {
+          "id_token": {
+            "type": "string",
+            "title": "Id Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id_token"
+        ],
+        "title": "GoogleLoginRequest",
+        "description": "Google 登录请求体，id_token 由前端 Google 登录 SDK 返回后转发给后端验证。"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "PromptDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "prompt_text": {
+            "type": "string",
+            "title": "Prompt Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Avatar Url"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "like_count": {
+            "type": "integer",
+            "title": "Like Count"
+          },
+          "view_count": {
+            "type": "integer",
+            "title": "View Count"
+          },
+          "collect_count": {
+            "type": "integer",
+            "title": "Collect Count"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/PromptImageOut"
+            },
+            "type": "array",
+            "title": "Images"
+          },
+          "is_liked": {
+            "type": "boolean",
+            "title": "Is Liked",
+            "default": false
+          },
+          "is_collected": {
+            "type": "boolean",
+            "title": "Is Collected",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "prompt_text",
+          "category",
+          "models",
+          "like_count",
+          "view_count",
+          "collect_count",
+          "created_at",
+          "images"
+        ],
+        "title": "PromptDetailOut",
+        "description": "详情弹窗所需的完整字段，对应 PRD 3.2。\n\nis_liked / is_collected 字段仅在用户已登录时才有意义，未登录时固定为 False，\n由路由层根据当前用户上下文动态填充，不在模型本身存储。"
+      },
+      "PromptImageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "image_url",
+          "sort_order"
+        ],
+        "title": "PromptImageOut",
+        "description": "效果图信息，用于详情接口。"
+      },
+      "PromptListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "like_count": {
+            "type": "integer",
+            "title": "Like Count"
+          },
+          "view_count": {
+            "type": "integer",
+            "title": "View Count"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "category",
+          "models",
+          "like_count",
+          "view_count",
+          "created_at"
+        ],
+        "title": "PromptListItem",
+        "description": "首页瀑布流卡片所需的精简字段，不包含提示词原文（减小响应体积）。"
+      },
+      "PromptListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PromptListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "has_more"
+        ],
+        "title": "PromptListResponse",
+        "description": "首页/分类页/搜索结果的分页响应结构。"
+      },
+      "ReportCreate": {
+        "properties": {
+          "reporter_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reporter Email"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ReportCreate",
+        "description": "举报/下架申诉请求体，对应 PRD 3.2\"内容有误或需要下架？联系我们\"。"
+      },
+      "SearchLogRequest": {
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "title": "Keyword"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keyword"
+        ],
+        "title": "SearchLogRequest",
+        "description": "记录一次实际搜索行为，用于后续统计热门搜索词排行。"
+      },
+      "SendCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "SendCodeRequest",
+        "description": "发送邮箱验证码请求体。"
+      },
+      "SortOption": {
+        "type": "string",
+        "enum": [
+          "latest",
+          "popular",
+          "hot"
+        ],
+        "title": "SortOption",
+        "description": "首页/分类页排序方式，对应 PRD 3.1 的\"最新/热门/浏览量\"三种切换。"
+      },
+      "SubmissionCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "prompt_text": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Prompt Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 5000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Models"
+          },
+          "upload_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Upload Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "prompt_text",
+          "category",
+          "models",
+          "upload_ids"
+        ],
+        "title": "SubmissionCreate"
+      },
+      "SubmissionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SubmissionOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "has_more"
+        ],
+        "title": "SubmissionList"
+      },
+      "SubmissionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "prompt_text": {
+            "type": "string",
+            "title": "Prompt Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "review_status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Review Status"
+          },
+          "published": {
+            "type": "boolean",
+            "title": "Published"
+          },
+          "image_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Image Urls"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "prompt_text",
+          "description",
+          "category",
+          "models",
+          "author_name",
+          "review_status",
+          "published",
+          "image_urls",
+          "review_note",
+          "created_at"
+        ],
+        "title": "SubmissionOut"
+      },
+      "SubmissionReject": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "title": "SubmissionReject"
+      },
+      "SubmissionUploadOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "image_url"
+        ],
+        "title": "SubmissionUploadOut"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "TokenResponse",
+        "description": "登录成功后的响应，前端存入 localStorage。"
+      },
+      "TrendItem": {
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "title": "Keyword"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank"
+          },
+          "trend": {
+            "type": "string",
+            "title": "Trend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keyword",
+          "rank",
+          "trend"
+        ],
+        "title": "TrendItem",
+        "description": "单个热门搜索词，trend 字段驱动前端箭头图标（up/down/flat）。"
+      },
+      "TrendingResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrendItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "TrendingResponse",
+        "description": "热门搜索词列表响应，对应搜索弹窗的\"热门搜索\"区域。"
+      },
+      "UserOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at"
+        ],
+        "title": "UserOut",
+        "description": "当前用户信息，对应 GET /api/auth/me。"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerifyCodeRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "VerifyCodeRequest",
+        "description": "验证邮箱验证码并登录/注册请求体。"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

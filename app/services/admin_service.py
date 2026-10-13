@@ -13,8 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import func as sql_func
 
-from app.models import ContentReport, Prompt, PromptImage
+from app.models import ContentReport, Prompt, PromptImage, SubmissionAsset
 from app.schemas.admin import AdminPromptCreate, AdminPromptUpdate
+from app.services import cos_service
+from app.services.submission_service import SubmissionConflict, restore_private
+from app.utils.model_labels import normalize_model_labels
 
 
 async def list_prompts_for_admin(
@@ -46,9 +49,13 @@ async def list_prompts_for_admin(
     return list(rows), total
 
 
-async def get_prompt_for_admin(db: AsyncSession, prompt_id: uuid.UUID) -> Prompt | None:
+async def get_prompt_for_admin(
+    db: AsyncSession, prompt_id: uuid.UUID, *, lock: bool = False
+) -> Prompt | None:
     """后台查看单条内容详情（含草稿态），用于编辑前先拿到当前完整数据。"""
     query = select(Prompt).where(Prompt.id == prompt_id).options(selectinload(Prompt.images))
+    if lock:
+        query = query.with_for_update()
     result = await db.execute(query)
     return result.scalar_one_or_none()
 
@@ -64,7 +71,7 @@ async def create_prompt(db: AsyncSession, body: AdminPromptCreate) -> Prompt:
         prompt_text=body.prompt_text,
         description=body.description,
         category=body.category,
-        models=body.models,
+        models=normalize_model_labels(body.models),
         author_name=body.author_name,
         author_avatar_url=body.author_avatar_url,
         source_url=body.source_url,
@@ -97,13 +104,21 @@ async def update_prompt(db: AsyncSession, prompt_id: uuid.UUID, body: AdminPromp
     images 字段如果传了（不是 None），会先删除原有的全部效果图再整体插入新的，
     这是 MVP 阶段的简化处理，不支持"只改第二张图的排序"这种细粒度操作。
     """
-    prompt = await get_prompt_for_admin(db, prompt_id)
+    prompt = await get_prompt_for_admin(db, prompt_id, lock=True)
     if prompt is None:
         return None
 
+    if prompt.review_status is not None:
+        if body.images is not None:
+            raise SubmissionConflict("用户投稿图片请通过投稿审核页面处理")
+        if body.is_published is True and prompt.review_status != "approved":
+            raise SubmissionConflict("用户投稿必须先通过投稿审核")
+        if body.is_published is not None:
+            await _submission_visibility(db, prompt, body.is_published)
+
     update_data = body.model_dump(exclude_unset=True, exclude={"images"})
     for field, value in update_data.items():
-        setattr(prompt, field, value)
+        setattr(prompt, field, normalize_model_labels(value) if field == "models" else value)
 
     if body.images is not None:
         prompt.images.clear()  # cascade="all, delete-orphan" 会处理旧图片的删除
@@ -134,6 +149,11 @@ async def delete_prompt(db: AsyncSession, prompt_id: uuid.UUID) -> bool:
     prompt = await db.get(Prompt, prompt_id)
     if prompt is None:
         return False
+    if prompt.review_status is not None:
+        assets = (
+            await db.scalars(select(SubmissionAsset).where(SubmissionAsset.prompt_id == prompt.id))
+        ).all()
+        await restore_private([asset.object_key for asset in assets])
     await db.delete(prompt)
     await db.commit()
     return True
@@ -141,9 +161,13 @@ async def delete_prompt(db: AsyncSession, prompt_id: uuid.UUID) -> bool:
 
 async def set_published(db: AsyncSession, prompt_id: uuid.UUID, is_published: bool) -> Prompt | None:
     """单独的发布/下架操作，比完整的 update_prompt 更轻量，常用于"审核通过一键发布"场景。"""
-    prompt = await db.get(Prompt, prompt_id)
+    prompt = await db.scalar(select(Prompt).where(Prompt.id == prompt_id).with_for_update())
     if prompt is None:
         return None
+    if prompt.review_status is not None:
+        if is_published and prompt.review_status != "approved":
+            raise SubmissionConflict("用户投稿必须先通过投稿审核")
+        await _submission_visibility(db, prompt, is_published)
     prompt.is_published = is_published
     await db.commit()
     await db.refresh(prompt)
@@ -202,3 +226,9 @@ async def handle_report(
     await db.commit()
     await db.refresh(report)
     return report
+
+
+async def _submission_visibility(db, prompt, public):
+    assets = (await db.scalars(select(SubmissionAsset).where(SubmissionAsset.prompt_id == prompt.id))).all()
+    for asset in assets:
+        await cos_service.set_submission_visibility(asset.object_key, public)
