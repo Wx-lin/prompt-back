@@ -1,0 +1,39 @@
+# CI only: no image publishing, deployment, production credentials or DB services.
+$:
+  push: &checks
+    - name: Backend checks
+      runner:
+        cpus: 2
+        tags: cnb:arch:amd64
+      docker:
+        image: ghcr.io/astral-sh/uv:0.11.17-python3.13-bookworm-slim
+      env:
+        AIGC_TEST_DATABASE_URL: ""
+        UV_PYTHON_DOWNLOADS: never
+      stages:
+        - name: Install locked Python dependencies
+          script: uv sync --locked --group dev
+        - name: Backend lint
+          script: uv run --no-sync python -m ruff check app scripts tests
+        - name: Backend tests without production services
+          script: uv run --no-sync python -m pytest -q
+    - name: Admin checks
+      runner:
+        cpus: 2
+        tags: cnb:arch:amd64
+      docker:
+        image: node:24-bookworm-slim
+      env:
+        ADMIN_BASE_PATH: /admin/
+      stages:
+        - name: Install locked admin dependencies
+          script: cd admin-panel && npm ci
+        - name: Admin lint
+          script: cd admin-panel && npm run lint
+        - name: Admin production build
+          script: cd admin-panel && npm run build
+  pull_request: *checks
+
+main:
+  push: *checks
+  pull_request: *checks
