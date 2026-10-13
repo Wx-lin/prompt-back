@@ -67,12 +67,14 @@ def test_remote_migration_gate(tmp_path, permission, current, upgrade_fails, exp
 
     source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
     start = source.index("sudo -n docker compose run --rm --no-deps -T api alembic current >")
-    end = source.index("switched=true", start)
+    end = source.index("\nswitched=true", start)
     block = source[start:end]
     prefix = r"""
 set -Eeuo pipefail
 backup="$TEST_DIRECTORY"
 migrate="$TEST_PERMISSION"
+auto_migration=
+admin_hash=
 revision="$TEST_REVISION"
 sudo() {
     case "$*" in
@@ -99,3 +101,136 @@ sudo() {
     assert result.returncode == expected, result.stderr + result.stdout
     upgraded = (tmp_path / "calls").exists()
     assert upgraded == (permission == "true" and current != "e7a13c9b40d2")
+
+
+@pytest.mark.parametrize(
+    "current,head,allowed,expected",
+    [
+        ("5c8e9f0a12b3", "e7a13c9b40d2", "e7a13c9b40d2", 0),
+        ("111111111111", "e7a13c9b40d2", "e7a13c9b40d2", 1),
+        ("5c8e9f0a12b3", "ffffffffffff", "e7a13c9b40d2", 1),
+        ("5c8e9f0a12b3", "e7a13c9b40d2", "", 1),
+    ],
+)
+def test_automatic_migration_only_for_reviewed_parent_head(tmp_path, current, head, allowed, expected):
+    import os
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    start = source.index("sudo -n docker compose run --rm --no-deps -T api alembic current >")
+    block = source[start : source.index("\nswitched=true", start)]
+    prefix = r"""
+set -Eeuo pipefail
+backup="$TEST_DIRECTORY"
+migrate=false
+auto_migration="$TEST_ALLOWED"
+admin_hash=
+revision="$TEST_REVISION"
+sudo() {
+ case "$*" in
+ *"alembic current") printf '%s\n' "$revision" ;;
+ *"alembic heads") printf '%s (head)\n' "$TEST_HEAD" ;;
+ *"alembic upgrade head") printf 'upgrade\n' > "$backup/calls"; revision="$TEST_HEAD" ;;
+ *) return 9 ;;
+ esac
+}
+"""
+    env = {
+        **os.environ,
+        "TEST_DIRECTORY": str(tmp_path),
+        "TEST_ALLOWED": allowed,
+        "TEST_REVISION": current,
+        "TEST_HEAD": head,
+    }
+    result = subprocess.run(["bash", "-c", prefix + block], env=env, capture_output=True, text=True)
+    assert result.returncode == expected, result.stderr + result.stdout
+    assert (tmp_path / "calls").exists() == (expected == 0)
+
+
+def test_admin_checksum_rejected_before_server_mutation(tmp_path):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    start = source.index('if [[ -n "$admin_hash" ]]; then')
+    end = source.index("sudo -n docker compose config --quiet", start)
+    (tmp_path / "admin.tar.gz").write_bytes(b"wrong artifact")
+    prefix = f'backup="{tmp_path}"; admin_hash={"0" * 64}; set -Eeuo pipefail\n'
+    result = subprocess.run(["bash", "-c", prefix + source[start:end]], capture_output=True)
+    assert result.returncode != 0
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_admin_assets_published_before_index_and_rollback_restores_index(tmp_path, fail):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    finish = source[source.index("finish() {") : source.index("for attempt in {1..60}")]
+    start = source.rindex('if [[ -n "$admin_hash" ]]; then')
+    block = source[start : source.index("\nswitched=true", start)]
+    dist = tmp_path / "backend/admin-panel/dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("old index")
+    (dist / "assets/old.js").write_text("old JS")
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    new = tmp_path / "new"
+    (new / "assets").mkdir(parents=True)
+    (new / "index.html").write_text("new index")
+    (new / "assets/new.js").write_text("new JS")
+    with tarfile.open(backup / "admin.tar.gz", "w:gz") as archive:
+        archive.add(new / "index.html", arcname="index.html")
+        archive.add(new / "assets", arcname="assets")
+    prefix = (
+        "set -Eeuo pipefail; umask 077; backup=backup; admin_hash=x; admin_switched=false; "
+        "switched=false; success=false; old_id=; timer_was_active=false\n"
+    )
+    suffix = "\nexit 1" if fail else "\nsuccess=true"
+    result = subprocess.run(
+        ["bash", "-c", prefix + finish + block + suffix], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert result.returncode == (1 if fail else 0), result.stderr
+    assert (dist / "index.html").read_text() == ("old index" if fail else "new index")
+    assert (dist / "assets/old.js").exists()
+    assert (dist / "assets/new.js").exists()
+    assert (dist / "index.html").stat().st_mode & 0o777 == 0o644
+    assert (dist / "assets/new.js").stat().st_mode & 0o777 == 0o644
+    assert (dist / "assets").stat().st_mode & 0o777 == 0o755
+
+
+def test_verified_admin_archive_rejects_traversal(tmp_path):
+    import hashlib
+    import io
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    start = source.index('if [[ -n "$admin_hash" ]]; then')
+    block = source[start : source.index("sudo -n docker compose config --quiet", start)]
+    bundle = tmp_path / "admin.tar.gz"
+    with tarfile.open(bundle, "w:gz") as archive:
+        item = tarfile.TarInfo("../escape.html")
+        item.size = 3
+        archive.addfile(item, io.BytesIO(b"bad"))
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+    prefix = f'set -Eeuo pipefail; backup="{tmp_path}"; admin_hash={digest}\n'
+    result = subprocess.run(["bash", "-c", prefix + block], capture_output=True, text=True)
+    assert result.returncode != 0
+    assert "Unsafe admin archive member" in result.stderr
+    assert not (tmp_path.parent / "escape.html").exists()
+
+
+@pytest.mark.parametrize("response,expected", [("new index", 0), ("old index", 1), ("", 1)])
+def test_public_admin_health_requires_exact_new_index(tmp_path, response, expected):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    start = source.index("admin_healthy() {")
+    function = source[start : source.index("\nhealthy=false", start)]
+    (tmp_path / "admin.new").mkdir()
+    (tmp_path / "admin.new/index.html").write_text("new index")
+    (tmp_path / "response").write_text(response)
+    prefix = f'backup="{tmp_path}"; admin_hash=x\n'
+    prefix += r"""
+curl() { cp "$backup/response" "${@: -1}"; }
+"""
+    result = subprocess.run(["bash", "-c", prefix + function + "\nadmin_healthy"], capture_output=True)
+    assert result.returncode == expected

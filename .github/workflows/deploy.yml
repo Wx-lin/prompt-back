@@ -1,0 +1,105 @@
+name: Check and deploy backend + admin
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-backend
+  cancel-in-progress: false
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    container: ghcr.io/astral-sh/uv:0.11.17-python3.13-bookworm-slim
+    env:
+      AIGC_TEST_DATABASE_URL: ""
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - run: uv sync --locked --group dev
+      - run: uv run --no-sync python -m ruff check app scripts tests
+      - run: uv run --no-sync python -m pytest -q
+      - name: Package checked commit
+        run: |
+          mkdir -p release
+          uv run --no-sync python - <<'PYTHON'
+          import runpy
+          from pathlib import Path
+          package = runpy.run_path("scripts/deploy_backend.py")["package_release"]
+          package(Path.cwd(), Path("release/release.tar.gz"))
+          PYTHON
+          cp deploy/update-backend.sh release/update-backend.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-release
+          path: release/
+          retention-days: 7
+  admin:
+    runs-on: ubuntu-latest
+    env:
+      ADMIN_BASE_PATH: /admin/
+    defaults:
+      run:
+        working-directory: admin-panel
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: admin-panel/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: tar -czf ../admin.tar.gz -C dist .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: admin-release
+          path: admin.tar.gz
+          retention-days: 7
+  deploy:
+    needs: [backend, admin]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: backend-release
+          path: release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: admin-release
+          path: release
+      - name: Deploy verified artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${DEPLOY_HOST:?Configure DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Configure DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Configure DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Configure DEPLOY_KNOWN_HOSTS}"
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]]
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          trap 'rm -f "$HOME/.ssh/deploy_key"' EXIT
+          ssh_options=(-i "$HOME/.ssh/deploy_key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          release="backend-$(date -u +%Y%m%d-%H%M%S)"
+          backend_hash=$(sha256sum release/release.tar.gz | awk '{print $1}')
+          admin_hash=$(sha256sum release/admin.tar.gz | awk '{print $1}')
+          ssh "${ssh_options[@]}" "$remote" "mkdir -p /opt/aigc-prompt/releases/$release"
+          scp "${ssh_options[@]}" release/release.tar.gz release/admin.tar.gz release/update-backend.sh "$remote:/opt/aigc-prompt/releases/$release/"
+          # Only this reviewed additive migration is eligible for automatic upgrade.
+          ssh "${ssh_options[@]}" "$remote" "bash /opt/aigc-prompt/releases/$release/update-backend.sh $release $backend_hash false $admin_hash e7a13c9b40d2"

@@ -4,15 +4,34 @@ set -Eeuo pipefail
 release=$1
 expected_hash=$2
 migrate=${3:-false}
+admin_hash=${4:-}
+auto_migration=${5:-}
+[[ -z "$admin_hash" || "$admin_hash" =~ ^[a-f0-9]{64}$ ]]
+[[ -z "$auto_migration" || "$auto_migration" == e7a13c9b40d2 ]]
 [[ "$migrate" == true || "$migrate" == false ]]
 [[ "$release" =~ ^backend-[0-9]{8}-[0-9]{6}$ ]]
 [[ "$expected_hash" =~ ^[a-f0-9]{64}$ ]]
 cd /opt/aigc-prompt
 umask 077
+exec 8> .release-deploy.lock
+flock -n 8 || { echo 'Another production deployment is running'; exit 1; }
 exec 9> .backend-deploy.lock
 flock -n 9 || { echo 'Another backend deployment is running'; exit 1; }
 backup="releases/$release"
 printf '%s  %s\n' "$expected_hash" "$backup/release.tar.gz" | sha256sum -c -
+if [[ -n "$admin_hash" ]]; then
+    printf '%s  %s\n' "$admin_hash" "$backup/admin.tar.gz" | sha256sum -c -
+    # Reject paths, links and special files before extracting the verified static bundle.
+    python3 - "$backup/admin.tar.gz" <<'PYTHON'
+import sys, tarfile
+from pathlib import PurePosixPath
+with tarfile.open(sys.argv[1]) as archive:
+    for item in archive.getmembers():
+        path = PurePosixPath(item.name)
+        if path.is_absolute() or ".." in path.parts or not (item.isfile() or item.isdir()):
+            raise SystemExit("Unsafe admin archive member")
+PYTHON
+fi
 sudo -n docker compose config --quiet
 available=$(df -Pk . | awk 'NR==2 {print $4}')
 (( available >= 1048576 )) || { echo 'Less than 1 GiB free; deployment stopped'; exit 1; }
@@ -24,6 +43,7 @@ if sudo -n systemctl is-active --quiet aigc-crawl.timer; then
 fi
 switched=false
 success=false
+admin_switched=false
 old_id=
 old_reference=
 finish() {
@@ -47,6 +67,11 @@ finish() {
                 cp "$backup/backend.before/$file" "backend/$file" || code=1
             done
         fi
+    fi
+    if [[ "$admin_switched" == true && "$success" != true ]]; then
+        cp "$backup/admin.index.previous" backend/admin-panel/dist/index.html.rollback
+        chmod 0644 backend/admin-panel/dist/index.html.rollback
+        mv backend/admin-panel/dist/index.html.rollback backend/admin-panel/dist/index.html || code=1
     fi
     if [[ "$switched" == true && "$success" != true ]]; then
         echo 'Health check failed. Restoring previous backend image.'
@@ -127,6 +152,9 @@ current=$(awk '/^[0-9a-f]+([[:space:]]|$)/ {print $1}' "$backup/revision.after")
 heads=$(awk '/\(head\)/ {print $1}' "$backup/heads")
 [[ "$heads" =~ ^[0-9a-f]+$ ]] || { echo 'Expected one migration head; deployment stopped'; exit 1; }
 if [[ "$current" != "$heads" ]]; then
+    if [[ "$migrate" != true && "$auto_migration" == e7a13c9b40d2 && "$current" == 5c8e9f0a12b3 && "$heads" == e7a13c9b40d2 ]]; then
+        migrate=true
+    fi
     if [[ "$migrate" != true ]]; then
         echo "Database migration required (${current:-base} -> $heads). Backend not switched."
         echo 'Review backward compatibility, then rerun deploy_backend.py --migrate.'
@@ -143,13 +171,43 @@ if [[ "$current" != "$heads" ]]; then
     current=$(awk '/^[0-9a-f]+([[:space:]]|$)/ {print $1}' "$backup/revision.after")
 fi
 [[ "$current" == "$heads" ]] || { echo 'Migration did not reach the target head; backend not switched'; exit 1; }
+if [[ -n "$admin_hash" ]]; then
+    mkdir "$backup/admin.new"
+    tar -xzf "$backup/admin.tar.gz" -C "$backup/admin.new"
+    test -s "$backup/admin.new/index.html"
+    test -d backend/admin-panel/dist
+    cp backend/admin-panel/dist/index.html "$backup/admin.index.previous"
+    # Keep old hashed assets for open browser tabs and rollback; publish index last.
+    if [[ -d "$backup/admin.new/assets" ]]; then
+        mkdir -p backend/admin-panel/dist/assets
+        cp -a "$backup/admin.new/assets/." backend/admin-panel/dist/assets/
+    fi
+    for file in "$backup/admin.new"/*; do
+        [[ "$(basename "$file")" == index.html || "$(basename "$file")" == assets ]] && continue
+        cp -a "$file" backend/admin-panel/dist/
+    done
+    cp "$backup/admin.new/index.html" backend/admin-panel/dist/index.html.next
+    # umask 077 protects backups, but nginx must read the public static files.
+    find backend/admin-panel/dist -type d -exec chmod 0755 {} +
+    find backend/admin-panel/dist -type f -exec chmod 0644 {} +
+    chmod 0644 backend/admin-panel/dist/index.html.next
+    admin_switched=true
+    mv backend/admin-panel/dist/index.html.next backend/admin-panel/dist/index.html
+fi
 switched=true
 sudo -n docker compose up -d --no-deps --no-build api
 sudo -n docker compose exec -T gateway nginx -t
 sudo -n docker compose exec -T gateway nginx -s reload
+admin_healthy() {
+    [[ -n "$admin_hash" ]] || return 0
+    curl --fail --silent --show-error --max-time 5 https://62.234.69.93:8443/admin/ \
+        --output "$backup/admin.public.html" || return 1
+    [[ "$(sha256sum "$backup/admin.public.html" | awk '{print $1}')" == \
+       "$(sha256sum "$backup/admin.new/index.html" | awk '{print $1}')" ]]
+}
 healthy=false
 for attempt in {1..20}; do
-    if curl --fail --silent --show-error --max-time 5 https://62.234.69.93:8443/health; then
+    if curl --fail --silent --show-error --max-time 5 https://62.234.69.93:8443/health && admin_healthy; then
         healthy=true
         break
     fi

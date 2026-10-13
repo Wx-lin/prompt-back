@@ -48,3 +48,29 @@
 - [官方 uv Docker 镜像](https://docs.astral.sh/uv/guides/integration/docker/)
 
 已创建后端私有仓库：https://cnb.cool/wx-lin-aigc-prompt/backend 。代码上传和云端执行仍待验证。前后端共用顶级组织的免费额度，不各自独立享有 160 核时。
+
+## GitHub 自动发布（当前实施）
+
+后端公开 GitHub 仓库使用 `.github/workflows/deploy.yml`：main push 自动检查，
+Python 测试与管理后台 /admin/ 构建成功后，将同一次提交的源包和后台静态包上传到
+既有服务器，调用 `deploy/update-backend.sh`。CNB 配置保留为备用检查入口，
+当前不需要建立后端 CNB 仓库。前端由其独立仓库流水线发布。
+
+在 GitHub production environment 配置 DEPLOY_HOST、DEPLOY_USER、DEPLOY_SSH_KEY、
+DEPLOY_KNOWN_HOSTS 四个 Secrets。SSH 公钥需由用户授权安装在服务器；known_hosts
+必须来自独立核验的服务器指纹，流水线不通过 ssh-keyscan 自动信任远端。
+密钥不会进入公开代码、制品或日志。不配置付费 runner，公开 GitHub 仓库使用
+标准托管 runner；私有仓库须重新检查账户免费额度。
+
+服务器部署保留磁盘保护、数据库备份验证、定时爬虫等待、源码与镜像备份、
+健康检查及回滚。所有前后端发布共用 `.release-deploy.lock`，后端另保留既有锁。
+管理后台校验 SHA256 并拒绝危险 tar 成员，先追加静态资源、最后原子替换 index；
+失败恢复旧 index，旧哈希资源不删除。当前仅自动许可数据库
+`5c8e9f0a12b3 → e7a13c9b40d2` 的已审核向后兼容迁移；未来迁移仍保护性停止。
+人工脚本的 `--migrate` 行为保持不变，不自动数据库降级或恢复。
+
+此配置尚未上传或真实执行；Secrets、远端免密 sudo、共享锁与线上健康检查需验收。
+
+后台静态文件显式设置目录0755、文件0644，避免发布备份umask077导致Nginx403；
+回滚index同样设置0644。后台公共HTTPS /admin/ 返回内容必须与本次index的SHA256
+一致，API健康正常但后台错误/旧页面也会判定发布失败并回滚。
