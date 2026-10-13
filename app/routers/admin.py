@@ -39,6 +39,8 @@ from app.schemas.crawl_task import (
     CrawlTaskOut,
     CrawlTaskStartRequest,
 )
+from app.schemas.homepage import FeaturedResponse, FeaturedUpdate
+from app.schemas.prompt import PromptListResponse, SortOption
 from app.services import admin_service, crawl_service, crawl_task_service
 from app.services.submission_service import SubmissionConflict
 from app.utils.admin_auth import verify_admin_key
@@ -392,3 +394,57 @@ async def get_crawl_task(task_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在")
     return CrawlTaskOut.model_validate(task)
+
+
+@router.get("/homepage/featured", response_model=FeaturedResponse)
+async def get_homepage_featured(db: AsyncSession = Depends(get_db)):
+    from app.services.homepage_service import get_featured
+
+    return await get_featured(db)
+
+
+@router.put("/homepage/featured", response_model=FeaturedResponse)
+async def update_homepage_featured(
+    body: FeaturedUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.homepage_service import (
+        FeaturedConflict,
+        InvalidFeaturedSelection,
+        replace_featured,
+    )
+
+    try:
+        return await replace_featured(db, body.prompt_ids, body.revision)
+    except FeaturedConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvalidFeaturedSelection as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/homepage/candidates", response_model=PromptListResponse)
+async def get_homepage_candidates(
+    q: str | None = Query(default=None, max_length=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> PromptListResponse:
+    from app.services.prompt_service import list_prompts
+
+    items, total = await list_prompts(
+        db,
+        None,
+        None,
+        SortOption.POPULAR,
+        page,
+        page_size,
+        search=q,
+        require_image=True,
+    )
+    return PromptListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=page * page_size < total,
+    )

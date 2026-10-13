@@ -539,3 +539,20 @@ textarea {
 .submission-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
 .submission-card summary { cursor: pointer; margin-bottom: 12px; }
 .submission-card form { margin-top: 18px; }
+
+/* 首页推荐复用后台卡片、按钮与主题，仅补充队列布局。 */
+.homepage-section { padding: 16px; margin-bottom: 16px; }
+.homepage-section h2 { font-size: 15px; margin-top: 0; }
+.homepage-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.homepage-thumbnail { display: flex; align-items: center; width: 64px; height: 76px; object-fit: cover; border-radius: var(--radius); background: var(--color-bg); flex-shrink: 0; }
+.homepage-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.homepage-drag { touch-action: none; cursor: grab; }
+.homepage-candidates { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
+.homepage-candidate { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius); overflow-wrap: anywhere; }
+.homepage-candidate .homepage-thumbnail { width: 100%; height: 150px; }
+@media (max-width: 700px) { .homepage-row { flex-wrap: wrap; gap: 8px; } .homepage-row .cell-actions { width: 100%; justify-content: flex-end; } }
+.homepage-preview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; max-width: 960px; }
+.homepage-preview-mobile { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 390px; }
+.homepage-preview .homepage-thumbnail { width: 100%; height: auto; min-height: 80px; }
+.homepage-preview p { overflow-wrap: anywhere; }
+@media (max-width: 700px) { .homepage-preview-desktop { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

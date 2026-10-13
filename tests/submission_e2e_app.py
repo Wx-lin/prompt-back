@@ -6,6 +6,7 @@ Run with AIGC_TEST_DATABASE_URL set, bind to 127.0.0.1, never deploy this module
 import os
 import uuid
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
-from app.models import Prompt, User
+from app.models import Prompt, PromptImage, User
 from app.redis import get_redis_client
 from app.routers import admin, admin_submissions, categories, model_catalog, prompts, submissions
 from app.services import cos_service
@@ -50,6 +51,23 @@ async def lifespan(_):
                     is_published=True,
                 )
                 for model in ["Midjourney V6", "Midjourney V7"]
+            ]
+        )
+        db.add_all(
+            [
+                Prompt(
+                    id=uuid.UUID(int=100 + index),
+                    title=f"精选测试作品 {index:02d}",
+                    prompt_text=f"真实数据库测试提示词 {index}",
+                    category="portrait" if index % 2 == 0 else "poster",
+                    models=["Midjourney V6"],
+                    is_published=index < 26,
+                    like_count=index,
+                    view_count=100 - index,
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(hours=index),
+                    images=[PromptImage(image_url="http://127.0.0.1:3000/demo/portrait.jpg", thumbnail_url="http://127.0.0.1:3000/demo/portrait.jpg")],
+                )
+                for index in range(27)
             ]
         )
         await db.commit()

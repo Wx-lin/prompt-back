@@ -7,13 +7,14 @@
 
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Prompt, UserCollect, UserLike
+from app.models import Prompt, PromptImage, UserCollect, UserLike
 from app.schemas.prompt import PromptListItem, SortOption
+from app.services.homepage_service import thumbnail_for_prompt
 from app.services.model_service import matching_stored_labels
 
 
@@ -25,6 +26,7 @@ async def list_prompts(
     page: int,
     page_size: int,
     search: str | None = None,
+    require_image: bool = False,
 ) -> tuple[list[PromptListItem], int]:
     """
     首页/分类页/模型筛选的分页列表查询，对应 PRD 3.1、3.3。
@@ -32,6 +34,9 @@ async def list_prompts(
     返回 (当前页数据, 总条数)，总条数用于前端计算是否还有下一页。
     """
     base_query = select(Prompt).where(Prompt.is_published.is_(True))
+
+    if require_image:
+        base_query = base_query.where(Prompt.images.any(func.trim(PromptImage.image_url) != ""))
 
     if category and category != "all":
         base_query = base_query.where(Prompt.category == category)
@@ -46,11 +51,28 @@ async def list_prompts(
             )
         )
 
-    sort_column = {
-        SortOption.LATEST: Prompt.created_at.desc(),
-        SortOption.POPULAR: Prompt.like_count.desc(),
-        SortOption.HOT: Prompt.view_count.desc(),
-    }[sort]
+    sort_columns = (
+        [
+            case(
+                (Prompt.images.any(func.trim(PromptImage.image_url) != ""), Prompt.homepage_rank),
+                else_=None,
+            )
+            .asc()
+            .nulls_last(),
+            Prompt.like_count.desc(),
+            Prompt.created_at.desc(),
+            Prompt.id.desc(),
+        ]
+        if sort == SortOption.RECOMMENDED
+        else [
+            {
+                SortOption.LATEST: Prompt.created_at.desc(),
+                SortOption.POPULAR: Prompt.like_count.desc(),
+                SortOption.HOT: Prompt.view_count.desc(),
+            }[sort],
+            Prompt.id.desc(),
+        ]
+    )
 
     count_query = select(func.count()).select_from(base_query.subquery())
     total = (await db.execute(count_query)).scalar_one()
@@ -58,7 +80,7 @@ async def list_prompts(
     # 用 selectinload 预加载第一张效果图，避免 N+1 查询问题
     list_query = (
         base_query.options(selectinload(Prompt.images))
-        .order_by(sort_column, Prompt.id.desc())
+        .order_by(*sort_columns)
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -70,7 +92,7 @@ async def list_prompts(
             title=row.title,
             category=row.category,
             models=row.models,
-            thumbnail_url=row.images[0].thumbnail_url if row.images else None,
+            thumbnail_url=thumbnail_for_prompt(row),
             like_count=row.like_count,
             view_count=row.view_count,
             author_name=row.author_name,
@@ -110,7 +132,7 @@ async def get_similar_prompts(
             title=row.title,
             category=row.category,
             models=row.models,
-            thumbnail_url=row.images[0].thumbnail_url if row.images else None,
+            thumbnail_url=thumbnail_for_prompt(row),
             like_count=row.like_count,
             view_count=row.view_count,
             author_name=row.author_name,

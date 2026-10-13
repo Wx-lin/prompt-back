@@ -19,6 +19,7 @@ from app.utils.model_labels import normalize_model_labels
 class SortOption(str, Enum):
     """首页/分类页排序方式，对应 PRD 3.1 的"最新/热门/浏览量"三种切换。"""
 
+    RECOMMENDED = "recommended"
     LATEST = "latest"
     POPULAR = "popular"  # 按点赞数
     HOT = "hot"  # 按浏览量

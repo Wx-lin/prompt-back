@@ -74,6 +74,7 @@ set -Eeuo pipefail
 backup="$TEST_DIRECTORY"
 migrate="$TEST_PERMISSION"
 auto_migration=
+reviewed_migration=
 admin_hash=
 revision="$TEST_REVISION"
 sudo() {
@@ -110,6 +111,7 @@ sudo() {
         ("111111111111", "e7a13c9b40d2", "e7a13c9b40d2", 1),
         ("5c8e9f0a12b3", "ffffffffffff", "e7a13c9b40d2", 1),
         ("5c8e9f0a12b3", "e7a13c9b40d2", "", 1),
+        ("e7a13c9b40d2", "f8b24d0c51e3", "e7a13c9b40d2", 1),
     ],
 )
 def test_automatic_migration_only_for_reviewed_parent_head(tmp_path, current, head, allowed, expected):
@@ -124,6 +126,7 @@ set -Eeuo pipefail
 backup="$TEST_DIRECTORY"
 migrate=false
 auto_migration="$TEST_ALLOWED"
+reviewed_migration=
 admin_hash=
 revision="$TEST_REVISION"
 sudo() {
@@ -274,3 +277,77 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
     assert "flock -w 600 8" in source
     assert "flock -w 600 9" in source
     assert "flock -n 8" not in source
+
+
+@pytest.mark.parametrize(
+    "permission,current,head,expected,upgraded",
+    [
+        ("true", "e7a13c9b40d2", "f8b24d0c51e3", 0, True),
+        ("true", "f8b24d0c51e3", "f8b24d0c51e3", 0, False),
+        ("true", "5c8e9f0a12b3", "f8b24d0c51e3", 1, False),
+        ("true", "e7a13c9b40d2", "ffffffffffff", 1, False),
+        ("false", "e7a13c9b40d2", "f8b24d0c51e3", 1, False),
+    ],
+)
+def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded):
+    import os
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    start = source.index("sudo -n docker compose run --rm --no-deps -T api alembic current >")
+    block = source[start : source.index("\nswitched=true", start)]
+    prefix = r"""
+set -Eeuo pipefail
+backup="$TEST_DIRECTORY"
+migrate="$TEST_PERMISSION"
+auto_migration=e7a13c9b40d2
+reviewed_migration=f8b24d0c51e3
+admin_hash=
+revision="$TEST_REVISION"
+sudo() {
+ case "$*" in
+ *"alembic current") printf '%s\n' "$revision" ;;
+ *"alembic heads") printf '%s (head)\n' "$TEST_HEAD" ;;
+ *"alembic upgrade head") printf 'upgrade\n' > "$backup/calls"; revision="$TEST_HEAD" ;;
+ *) return 9 ;;
+ esac
+}
+"""
+    env = {
+        **os.environ,
+        "TEST_DIRECTORY": str(tmp_path),
+        "TEST_PERMISSION": permission,
+        "TEST_REVISION": current,
+        "TEST_HEAD": head,
+    }
+    result = subprocess.run(["bash", "-c", prefix + block], env=env, capture_output=True, text=True)
+    assert result.returncode == expected, result.stderr + result.stdout
+    assert (tmp_path / "calls").exists() == upgraded
+
+
+@pytest.mark.parametrize(
+    "event,target,expected",
+    [
+        ("push", "f8b24d0c51e3", "false:"),
+        ("workflow_dispatch", "none", "false:"),
+        ("workflow_dispatch", "f8b24d0c51e3", "true:f8b24d0c51e3"),
+        ("workflow_dispatch", "ffffffffffff", "false:"),
+    ],
+)
+def test_workflow_only_explicit_dispatch_enables_migration(event, target, expected):
+    import os
+    import subprocess
+    import textwrap
+
+    source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    start = source.index("          migrate=false")
+    end = source.index("          # Push deployments", start)
+    block = textwrap.dedent(source[start:end])
+    result = subprocess.run(
+        ["bash", "-c", block + '\nprintf "%s:%s" "$migrate" "$reviewed_target"'],
+        env={**os.environ, "DEPLOY_EVENT": event, "REVIEWED_MIGRATION": target},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == expected

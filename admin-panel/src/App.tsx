@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import Layout from './components/Layout'
 import PromptsPage from './pages/PromptsPage'
 import SubmissionsPage from './pages/SubmissionsPage'
+import HomepagePage from './pages/HomepagePage'
 import ReportsPage from './pages/ReportsPage'
 import CrawlDraftsPage from './pages/CrawlDraftsPage'
 import CrawlSchedulesPage from './pages/CrawlSchedulesPage'
@@ -22,6 +23,7 @@ function AppRoutes() {
           <Route path="/" element={<Navigate to="/prompts" replace />} />
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/submissions" element={<SubmissionsPage />} />
+          <Route path="/homepage" element={<HomepagePage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/crawl-drafts" element={<CrawlDraftsPage />} />
           <Route path="/crawl-schedules" element={<CrawlSchedulesPage />} />

@@ -25,6 +25,7 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         <nav className="sidebar-nav">
+          <NavLink to="/homepage" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>首页推荐</NavLink>
           <NavLink to="/submissions" className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}>投稿审核</NavLink>
           <NavLink
             to="/prompts"

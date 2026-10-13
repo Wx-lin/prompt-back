@@ -5,6 +5,14 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      reviewed_migration:
+        description: Reviewed additive migration for this release only
+        type: choice
+        default: none
+        options:
+          - none
+          - f8b24d0c51e3
 permissions:
   contents: read
 concurrency:
@@ -83,6 +91,9 @@ jobs:
           name: admin-release
           path: release
       - name: Deploy verified artifacts
+        env:
+          DEPLOY_EVENT: ${{ github.event_name }}
+          REVIEWED_MIGRATION: ${{ inputs.reviewed_migration }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -99,6 +110,10 @@ jobs:
           trap 'rm -f "$HOME/.ssh/deploy_key"' EXIT
           ssh_options=(-i "$HOME/.ssh/deploy_key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
           remote="$DEPLOY_USER@$DEPLOY_HOST"
+          # Audit findings depend on asymmetric JWT paths; verify the deployed setting only.
+          algorithm=$(ssh "${ssh_options[@]}" "$remote" 'cd /opt/aigc-prompt && sudo -n docker compose exec -T api python -c "from app.config import get_settings; print(get_settings().jwt_algorithm)"')
+          [[ "$algorithm" == HS256 ]] || { echo 'Unexpected JWT algorithm; review required before release'; exit 1; }
+          echo "JWT algorithm verified: $algorithm"
           release="backend-$(date -u +%Y%m%d-%H%M%S)"
           backend_hash=$(sha256sum release/release.tar.gz | awk '{print $1}')
           admin_hash=$(sha256sum release/admin.tar.gz | awk '{print $1}')
@@ -106,7 +121,13 @@ jobs:
           # shellcheck disable=SC2029
           ssh "${ssh_options[@]}" "$remote" "mkdir -p /opt/aigc-prompt/releases/$release"
           scp "${ssh_options[@]}" release/release.tar.gz release/admin.tar.gz release/update-backend.sh "$remote:/opt/aigc-prompt/releases/$release/"
-          # Only this reviewed additive migration is eligible for automatic upgrade.
+          migrate=false
+          reviewed_target=
+          if [[ "$DEPLOY_EVENT" == workflow_dispatch && "$REVIEWED_MIGRATION" == f8b24d0c51e3 ]]; then
+            migrate=true
+            reviewed_target=f8b24d0c51e3
+          fi
+          # Push deployments retain the original automatic migration whitelist.
           # Validated release names and hashes intentionally expand before SSH.
           # shellcheck disable=SC2029
-          ssh "${ssh_options[@]}" "$remote" "bash /opt/aigc-prompt/releases/$release/update-backend.sh $release $backend_hash false $admin_hash e7a13c9b40d2"
+          ssh "${ssh_options[@]}" "$remote" "bash /opt/aigc-prompt/releases/$release/update-backend.sh $release $backend_hash $migrate $admin_hash e7a13c9b40d2 $reviewed_target"

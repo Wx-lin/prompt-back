@@ -41,6 +41,8 @@ class Prompt(Base):
 
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, index=True, comment="是否已发布上线")
 
+    homepage_rank: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+
     submitter_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
