@@ -77,3 +77,11 @@ DEPLOY_KNOWN_HOSTS 四个 Secrets。SSH 公钥需由用户授权安装在服务�
 
 前后端共享生产发布锁最多等待600秒，避免两个仓库同时推送时其中一条立即失败；
 既有后端发布锁同样有600秒上限。超时退出，不无限等待或取消正在发布的任务。
+
+## 真实CI安装失败修复
+
+GitHub运行38360241552在后端容器拉取与管理后台依赖安装阶段失败，尚未部署。
+改用官方setup-python（完整提交SHA固定）提供Python3.13，再从公开PyPI安装已核验
+存在的uv0.11.17；CNB备用配置同样改为官方Python镜像。管理后台锁文件的resolved
+地址从公司内网域名迁到registry.npmjs.org，保留全部依赖版本和integrity；uv.lock
+原本只使用pypi.org/files.pythonhosted.org，不需要更改。

@@ -6,11 +6,13 @@ $:
         cpus: 2
         tags: cnb:arch:amd64
       docker:
-        image: ghcr.io/astral-sh/uv:0.11.17-python3.13-bookworm-slim
+        image: python:3.13-slim
       env:
         AIGC_TEST_DATABASE_URL: ""
         UV_PYTHON_DOWNLOADS: never
       stages:
+        - name: Install verified uv from public PyPI
+          script: python -m pip install --index-url https://pypi.org/simple uv==0.11.17
         - name: Install locked Python dependencies
           script: uv sync --locked --group dev
         - name: Backend lint
@@ -27,7 +29,7 @@ $:
         ADMIN_BASE_PATH: /admin/
       stages:
         - name: Install locked admin dependencies
-          script: cd admin-panel && npm ci
+          script: cd admin-panel && npm ci --registry=https://registry.npmjs.org
         - name: Admin lint
           script: cd admin-panel && npm run lint
         - name: Admin production build
