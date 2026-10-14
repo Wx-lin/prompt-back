@@ -89,7 +89,7 @@ def test_auto_publish_uploads_before_review_and_keeps_only_credible(monkeypatch)
     assert added[0].is_published is True
 
 
-@pytest.mark.parametrize("failure", ["api", "empty", "no_images", "untrusted", "upload"])
+@pytest.mark.parametrize("failure", ["api", "empty", "no_images", "untrusted", "upload", "uncertain"])
 def test_failed_review_never_publishes(monkeypatch, failure):
     from app.services import auto_review_service as svc
 
@@ -119,6 +119,8 @@ def test_failed_review_never_publishes(monkeypatch, failure):
     result = _parse_response(payload(), 1)
     if failure == "empty":
         result.cleaned_prompt_text = " "
+    if failure == "uncertain":
+        result.suggested_category = ""
     if failure == "untrusted":
         result.images[0].is_credible = False
     monkeypatch.setattr(

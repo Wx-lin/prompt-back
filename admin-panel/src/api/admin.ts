@@ -36,6 +36,7 @@ export type PromptUpdateInput = Partial<PromptCreateInput>
 /** 拉取内容列表，is_published 不传则返回全部（含草稿） */
 export function listPrompts(params: {
   is_published?: boolean
+  category?: string
   page?: number
   page_size?: number
 }): Promise<Paginated<AdminPrompt>> {
@@ -43,6 +44,7 @@ export function listPrompts(params: {
   if (params.is_published !== undefined) {
     query.set('is_published', String(params.is_published))
   }
+  if (params.category) query.set('category', params.category)
   query.set('page', String(params.page ?? 1))
   query.set('page_size', String(params.page_size ?? 20))
   return apiRequest<Paginated<AdminPrompt>>(`/api/admin/prompts?${query}`)
@@ -89,11 +91,13 @@ export function deletePrompt(id: string): Promise<void> {
 /** 拉取举报列表，status 不传则返回全部 */
 export function listReports(params: {
   status?: string
+  category?: string
   page?: number
   page_size?: number
 }): Promise<Paginated<AdminReport>> {
   const query = new URLSearchParams()
   if (params.status) query.set('status', params.status)
+  if (params.category) query.set('category', params.category)
   query.set('page', String(params.page ?? 1))
   query.set('page_size', String(params.page_size ?? 20))
   return apiRequest<Paginated<AdminReport>>(`/api/admin/reports?${query}`)
@@ -115,11 +119,13 @@ export function handleReport(
 /** 拉取采集草稿列表，常用 status=pending 筛出待审核的 */
 export function listCrawlDrafts(params: {
   status?: string
+  category?: string
   page?: number
   page_size?: number
 }): Promise<Paginated<CrawlDraft>> {
   const query = new URLSearchParams()
   if (params.status) query.set('status', params.status)
+  if (params.category) query.set('category', params.category)
   query.set('page', String(params.page ?? 1))
   query.set('page_size', String(params.page_size ?? 20))
   return apiRequest<Paginated<CrawlDraft>>(`/api/admin/crawl-drafts?${query}`)

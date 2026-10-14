@@ -7,15 +7,18 @@
 
 import uuid
 
+from fastapi import HTTPException
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Prompt, PromptImage, UserCollect, UserLike
+from app.models import CategoryLegacyMembership, Prompt, PromptImage, UserCollect, UserLike
 from app.schemas.prompt import PromptListItem, SortOption
 from app.services.homepage_service import thumbnail_for_prompt
 from app.services.model_service import matching_stored_labels
+from app.utils.category_catalog import CATEGORY_LABELS, LEGACY_CATEGORY_KEYS
+from app.utils.public_prompts import public_prompt_condition
 
 
 async def list_prompts(
@@ -33,13 +36,24 @@ async def list_prompts(
 
     返回 (当前页数据, 总条数)，总条数用于前端计算是否还有下一页。
     """
-    base_query = select(Prompt).where(Prompt.is_published.is_(True))
+    base_query = select(Prompt).where(public_prompt_condition())
 
     if require_image:
         base_query = base_query.where(Prompt.images.any(func.trim(PromptImage.image_url) != ""))
 
-    if category and category != "all":
-        base_query = base_query.where(Prompt.category == category)
+    if category is not None and category != "all":
+        if category in LEGACY_CATEGORY_KEYS:
+            base_query = base_query.where(
+                Prompt.id.in_(
+                    select(CategoryLegacyMembership.prompt_id).where(
+                        CategoryLegacyMembership.legacy_key == category
+                    )
+                )
+            )
+        elif category in CATEGORY_LABELS:
+            base_query = base_query.where(Prompt.category == category)
+        else:
+            raise HTTPException(status_code=422, detail="请选择有效分类")
     if models:
         aliases = await matching_stored_labels(db, models)
         base_query = base_query.where(Prompt.models.op("&&")(array(aliases)))
@@ -107,7 +121,7 @@ async def get_prompt_detail(db: AsyncSession, prompt_id: uuid.UUID) -> Prompt | 
     """获取单条提示词详情（含关联的效果图），对应 PRD 3.2 详情弹窗。"""
     query = (
         select(Prompt)
-        .where(Prompt.id == prompt_id, Prompt.is_published.is_(True))
+        .where(Prompt.id == prompt_id, public_prompt_condition())
         .options(selectinload(Prompt.images))
     )
     result = await db.execute(query)
@@ -120,7 +134,7 @@ async def get_similar_prompts(
     """获取同分类下的相似内容，排除自身，用于详情弹窗"更多相似"区域。"""
     query = (
         select(Prompt)
-        .where(Prompt.category == category, Prompt.id != prompt_id, Prompt.is_published.is_(True))
+        .where(Prompt.category == category, Prompt.id != prompt_id, public_prompt_condition())
         .options(selectinload(Prompt.images))
         .order_by(Prompt.like_count.desc())
         .limit(limit)

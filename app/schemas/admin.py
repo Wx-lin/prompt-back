@@ -8,7 +8,9 @@ XxxUpdate 是编辑请求体（字段全部可选，支持部分更新），XxxO
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from app.utils.category_catalog import CategoryKey
 
 
 class AdminPromptImageIn(BaseModel):
@@ -31,7 +33,7 @@ class AdminPromptCreate(BaseModel):
     title: str
     prompt_text: str
     description: str | None = None
-    category: str
+    category: CategoryKey
     models: list[str] = []
     author_name: str | None = None
     author_avatar_url: str | None = None
@@ -51,13 +53,20 @@ class AdminPromptUpdate(BaseModel):
     title: str | None = None
     prompt_text: str | None = None
     description: str | None = None
-    category: str | None = None
+    category: CategoryKey | None = None
     models: list[str] | None = None
     author_name: str | None = None
     author_avatar_url: str | None = None
     source_url: str | None = None
     is_published: bool | None = None
     images: list[AdminPromptImageIn] | None = None
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def category_cannot_be_cleared(cls, value):
+        if value is None:
+            raise ValueError("请选择有效分类")
+        return value
 
 
 class AdminPromptOut(BaseModel):

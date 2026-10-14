@@ -27,6 +27,7 @@ from app.config import get_settings
 from app.database import AsyncSessionLocal
 from app.models import CrawlDraft, Prompt, PromptImage
 from app.services import content_review_service, copyright_filter, cos_service
+from app.utils.category_catalog import CATEGORY_LABELS
 
 logging.basicConfig(level=logging.WARNING)  # 屏蔽 sqlalchemy 的 INFO 日志，保留我们自己的 WARNING
 settings = get_settings()
@@ -138,6 +139,11 @@ async def main() -> None:
                 failed += 1
                 continue
 
+            if review.suggested_category not in CATEGORY_LABELS:
+                print("分类用途不明确，保持原状态，交人工审核")
+                kept_pending += 1
+                continue
+
             if not review.has_credible_image:
                 print("    ⚠️ 全部图片不可信，保持 pending，不创建内容\n")
                 kept_pending += 1
@@ -153,7 +159,7 @@ async def main() -> None:
 
             title_final = review.suggested_title or draft.raw_title or "未命名"
             prompt_text_final = review.cleaned_prompt_text or draft.extracted_prompt_text or draft.raw_content
-            category_final = review.suggested_category or draft.extracted_category or "illustration"
+            category_final = review.suggested_category
             raw_models = draft.extracted_models or ""
             models_final = [m.strip() for m in raw_models.split(",") if m.strip()]
 

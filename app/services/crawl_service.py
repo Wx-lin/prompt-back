@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.models import CrawlDraft, Prompt, PromptImage
 from app.schemas.crawl import CrawlDraftApprove, CrawlDraftReviewUpdate
 from app.services import content_review_service, copyright_filter, cos_service
+from app.utils.category_catalog import CATEGORY_LABELS
 from app.utils.model_labels import normalize_model_labels
 
 settings = get_settings()
@@ -53,12 +54,15 @@ async def list_drafts(
     status_filter: str | None,
     page: int,
     page_size: int,
+    category: str | None = None,
 ) -> tuple[list[CrawlDraft], int]:
     """
     草稿列表查询，默认按创建时间倒序（最新采集的排前面）。
     支持按 status 筛选（pending / approved / rejected），对应后台"只看待审核"的常见操作。
     """
     query = select(CrawlDraft)
+    if category is not None:
+        query = query.where(CrawlDraft.extracted_category == category)
     if status_filter:
         query = query.where(CrawlDraft.status == status_filter)
 
@@ -146,7 +150,7 @@ async def approve_draft(db: AsyncSession, draft_id: uuid.UUID, body: CrawlDraftA
 
     prompt_text = body.prompt_text or draft.extracted_prompt_text
     category = body.category or draft.extracted_category
-    if not prompt_text or not category:
+    if not prompt_text or category not in CATEGORY_LABELS:
         raise ValueError("提示词原文和分类必须有值（可以在请求体里传，也可以提前在草稿里填好）")
 
     models_source = body.models

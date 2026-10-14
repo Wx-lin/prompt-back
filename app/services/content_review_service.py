@@ -4,7 +4,7 @@ AI 内容审核服务：草稿转正式内容前的自动预审。
 单次结构化调用 qwen3.7-plus（阿里云百炼，OpenAI 兼容接口），对草稿的图片和文案做三件事：
   1. 判断每张图片是否是 AI 生成的效果图（而非游戏截图、实景照片等无关素材）
   2. 清洗文案——去掉话题标签、营销语气、无关的 emoji，保留真正描述图片效果的提示词内容
-  3. 根据图片内容建议分类（8 个创作意图分类之一）
+  3. 根据图片内容建议分类（12 个创作意图分类之一）
 
 不使用 Agent 循环，一次请求完成所有判断，结果以结构化 JSON 返回。
 enable_thinking 强制关闭，避免额外消耗推理 token。
@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from openai import AsyncOpenAI
 
 from app.config import get_settings
-from app.routers.categories import CATEGORY_LABELS
+from app.utils.category_catalog import CATEGORY_CATALOG, CATEGORY_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,11 @@ _SYSTEM_PROMPT = f"""你是一个专业的 AIGC 内容审核助手。
    - is_credible: false = 明显是游戏截图、商品实拍、真人照片、品牌宣传图等非 AI 效果图
    - reason: 用一句中文简短说明判断理由
 
-2. 根据图片内容，将这批内容归入以下 8 个分类之一：
-{json.dumps(CATEGORY_LABELS, ensure_ascii=False, indent=2)}
-   suggested_category 的值必须是上面的英文 key（如 "portrait"，不是中文标签）。
+2. 根据完整提示词、说明和图片的明确成品用途，将内容归入以下 12 个分类之一：
+{json.dumps(CATEGORY_CATALOG, ensure_ascii=False, indent=2)}
+   明确成品用途优先于风格或主体。不能确定用途时返回空字符串，交人工审核。
+   禁止默认归入 scene；纯教程也返回空字符串。
+   suggested_category 的非空值必须是上面的英文 key（如 "portrait"，不是中文标签）。
 
 3. 清洗原始文案，提取真正有价值的提示词内容：
    - 去掉话题标签（#xxx）、平台 @ 和互动语气（"快来看"、"超好用"等）
@@ -153,7 +155,7 @@ def _parse_response(raw_json: str, image_count: int) -> ContentReviewResult:
     for field in ("suggested_title", "cleaned_prompt_text", "suggested_category"):
         if not isinstance(data.get(field), str):
             raise ContentReviewError(f"{field} 必须是字符串")
-    if data["suggested_category"] not in _VALID_CATEGORIES:
+    if data["suggested_category"] and data["suggested_category"] not in _VALID_CATEGORIES:
         raise ContentReviewError("模型返回无效分类")
     return ContentReviewResult(
         images=sorted(images, key=lambda image: image.index),

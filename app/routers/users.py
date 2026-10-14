@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models import Prompt, User, UserCollect
 from app.schemas.prompt import PromptListItem, PromptListResponse
 from app.utils.deps import get_current_user
+from app.utils.public_prompts import public_prompt_condition
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -28,7 +29,7 @@ async def get_my_collects(
     base_query = (
         select(Prompt)
         .join(UserCollect, UserCollect.prompt_id == Prompt.id)
-        .where(UserCollect.user_id == current_user.id, Prompt.is_published.is_(True))
+        .where(UserCollect.user_id == current_user.id, public_prompt_condition())
         .options(selectinload(Prompt.images))
         .order_by(UserCollect.created_at.desc())
     )

@@ -1,3 +1,6 @@
+import { useCategories } from '../api/categories'
+import { isValidCategory } from '../api/category-utils'
+import CategoryPicker from '../components/CategoryPicker'
 import ModelPicker from '../components/ModelPicker'
 import { isActiveTask } from '../api/crawl-utils'
 /**
@@ -28,7 +31,7 @@ import {
   listCrawlPlatforms,
 } from '../api/admin'
 import type { CrawlDraft, CrawlPlatformInfo, CrawlTask, Paginated } from '../api/types'
-import { CATEGORY_LABELS, DRAFT_STATUS_LABELS, PLATFORM_LABELS, TASK_STATUS_LABELS } from '../api/types'
+import { DRAFT_STATUS_LABELS, PLATFORM_LABELS, TASK_STATUS_LABELS } from '../api/types'
 import { ApiError } from '../api/client'
 import { useAuth } from '../store/auth'
 
@@ -43,6 +46,8 @@ const FILTER_OPTIONS = [
 
 export default function CrawlDraftsPage() {
   const { handleUnauthorized } = useAuth()
+  const { categories, error: categoryError } = useCategories()
+  const [categoryFilter, setCategoryFilter] = useState('')
 
   const [data, setData] = useState<Paginated<CrawlDraft> | null>(null)
   const [page, setPage] = useState(1)
@@ -63,7 +68,7 @@ export default function CrawlDraftsPage() {
       setLoading(true)
       setError('')
       try {
-        const res = await listCrawlDrafts({ status: f || undefined, page: p, page_size: PAGE_SIZE })
+        const res = await listCrawlDrafts({ status: f || undefined, category: categoryFilter || undefined, page: p, page_size: PAGE_SIZE })
         setData(res)
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) handleUnauthorized()
@@ -72,7 +77,7 @@ export default function CrawlDraftsPage() {
         setLoading(false)
       }
     },
-    [handleUnauthorized],
+    [handleUnauthorized, categoryFilter],
   )
 
   useEffect(() => {
@@ -140,6 +145,7 @@ export default function CrawlDraftsPage() {
           </div>
         </div>
         <div className="toolbar">
+          <CategoryPicker categories={categories} value={categoryFilter} filter onChange={value => { setCategoryFilter(value); setPage(1) }} />
           <select
             value={filter}
             onChange={(e) => {
@@ -157,7 +163,7 @@ export default function CrawlDraftsPage() {
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {(error || categoryError) && <div className="alert alert-error">{error || categoryError}</div>}
 
       <CrawlTaskPanel batchTasks={batchTasks} onStart={handleStartCrawl} onLogin={setLoginTask} />
       {loginTask && <TaskLoginDialog taskId={loginTask} onClose={() => setLoginTask(null)} />}
@@ -260,10 +266,11 @@ interface ReviewModalProps {
 }
 
 function ReviewModal({ draft, onClose, onDone, onUnauthorized }: ReviewModalProps) {
+  const { categories, error: categoryError } = useCategories()
   // 可编辑的审核字段（PATCH /crawl-drafts/{id}）
   const [promptText, setPromptText] = useState(draft.extracted_prompt_text ?? '')
   const [category, setCategory] = useState(
-    draft.extracted_category ?? Object.keys(CATEGORY_LABELS)[0],
+    draft.extracted_category ?? '',
   )
   const [models, setModels] = useState(draft.extracted_models ?? '')
 
@@ -282,6 +289,7 @@ function ReviewModal({ draft, onClose, onDone, onUnauthorized }: ReviewModalProp
 
   /** 保存审核字段（不入库，只是把整理好的字段存回草稿） */
   async function handleSave() {
+    if (!isValidCategory(categories, category)) { setError('请选择有效分类'); return }
     setSaving(true)
     setError('')
     setSaved(false)
@@ -302,6 +310,7 @@ function ReviewModal({ draft, onClose, onDone, onUnauthorized }: ReviewModalProp
 
   /** 通过并转为正式内容 */
   async function handleApprove() {
+    if (!isValidCategory(categories, category)) { setError('请选择有效分类'); return }
     if (!approveTitle.trim()) {
       setError('请填写正式标题')
       return
@@ -412,7 +421,7 @@ function ReviewModal({ draft, onClose, onDone, onUnauthorized }: ReviewModalProp
 
           {/* 右：整理后的字段 + 入库操作 */}
           <div>
-            {error && <div className="alert alert-error">{error}</div>}
+            {(error || categoryError) && <div className="alert alert-error">{error || categoryError}</div>}
             {saved && <div className="alert alert-success">字段已保存</div>}
 
             <div className="field">
@@ -429,17 +438,7 @@ function ReviewModal({ draft, onClose, onDone, onUnauthorized }: ReviewModalProp
             <div className="field-row">
               <div className="field">
                 <label>分类</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  disabled={!isPending}
-                >
-                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
+                <CategoryPicker categories={categories} value={category} onChange={setCategory} disabled={!isPending} />
               </div>
               <div className="field">
                 <ModelPicker value={models.split(',').map(value => value.trim()).filter(Boolean)}

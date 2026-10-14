@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models import CrawlDraft, Prompt, PromptImage
 from app.services import content_review_service, cos_service
 from app.services.crawl_service import _resolve_local_file_path
+from app.utils.category_catalog import CATEGORY_LABELS
 from app.utils.model_labels import normalize_model_labels
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,8 @@ async def auto_publish_draft(db, draft_id) -> str:
         )
         if not review.cleaned_prompt_text.strip() or not review.suggested_title.strip():
             raise ValueError("没有有效提示词或标题")
+        if review.suggested_category not in CATEGORY_LABELS:
+            raise ValueError("分类用途不明确，需人工确认")
         credible_urls = [urls[item.index] for item in review.images if item.is_credible is True]
         if not credible_urls:
             raise ValueError("没有通过审核的 AI 图片")

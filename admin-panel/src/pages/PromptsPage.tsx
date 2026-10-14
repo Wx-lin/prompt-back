@@ -15,7 +15,9 @@ import {
   type PromptCreateInput,
 } from '../api/admin'
 import type { AdminPrompt, Paginated } from '../api/types'
-import { CATEGORY_LABELS } from '../api/types'
+import { useCategories } from '../api/categories'
+import { categoryLabel, isValidCategory } from '../api/category-utils'
+import CategoryPicker from '../components/CategoryPicker'
 import { ApiError } from '../api/client'
 import { useAuth } from '../store/auth'
 
@@ -30,6 +32,8 @@ const FILTER_OPTIONS = [
 
 export default function PromptsPage() {
   const { handleUnauthorized } = useAuth()
+  const { categories, error: categoryError } = useCategories()
+  const [categoryFilter, setCategoryFilter] = useState('')
 
   const [data, setData] = useState<Paginated<AdminPrompt> | null>(null)
   const [page, setPage] = useState(1)
@@ -48,6 +52,7 @@ export default function PromptsPage() {
       try {
         const params: Parameters<typeof listPrompts>[0] = { page: p, page_size: PAGE_SIZE }
         if (f !== '') params.is_published = f === 'true'
+        if (categoryFilter) params.category = categoryFilter
         const res = await listPrompts(params)
         setData(res)
       } catch (err) {
@@ -57,7 +62,7 @@ export default function PromptsPage() {
         setLoading(false)
       }
     },
-    [handleUnauthorized],
+    [handleUnauthorized, categoryFilter],
   )
 
   useEffect(() => {
@@ -111,6 +116,7 @@ export default function PromptsPage() {
           {data && <div className="subtitle">共 {total} 条内容</div>}
         </div>
         <div className="toolbar">
+          <CategoryPicker categories={categories} value={categoryFilter} filter onChange={value => { setCategoryFilter(value); setPage(1) }} />
           <select
             value={filter}
             onChange={(e) => {
@@ -131,7 +137,7 @@ export default function PromptsPage() {
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {(error || categoryError) && <div className="alert alert-error">{error || categoryError}</div>}
 
       <div className="card">
         <table>
@@ -167,7 +173,7 @@ export default function PromptsPage() {
                   <td className="cell-title" title={p.title}>
                     {p.title}
                   </td>
-                  <td>{CATEGORY_LABELS[p.category] ?? p.category}</td>
+                  <td>{categoryLabel(categories, p.category)}</td>
                   <td className="cell-muted">{p.models.join(', ') || '—'}</td>
                   <td>
                     {p.is_published ? (
@@ -238,12 +244,13 @@ interface PromptModalProps {
 
 function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalProps) {
   const isEdit = initial !== null
+  const { categories, error: categoryError } = useCategories()
 
   const [form, setForm] = useState<PromptCreateInput>({
     title: initial?.title ?? '',
     prompt_text: initial?.prompt_text ?? '',
     description: initial?.description ?? '',
-    category: initial?.category ?? Object.keys(CATEGORY_LABELS)[0],
+    category: initial?.category ?? '',
     models: initial?.models ?? [],
     author_name: initial?.author_name ?? '',
     source_url: initial?.source_url ?? '',
@@ -254,6 +261,7 @@ function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalP
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!isValidCategory(categories, form.category)) { setError('请选择有效分类'); return }
     setSaving(true)
     setError('')
     const body: PromptCreateInput = {
@@ -294,7 +302,7 @@ function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalP
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            {error && <div className="alert alert-error">{error}</div>}
+            {(error || categoryError) && <div className="alert alert-error">{error || categoryError}</div>}
 
             <div className="field">
               <label>标题 *</label>
@@ -318,13 +326,7 @@ function PromptModal({ initial, onClose, onSaved, onUnauthorized }: PromptModalP
             <div className="field-row">
               <div className="field">
                 <label>分类 *</label>
-                <select value={form.category} onChange={(e) => set('category', e.target.value)}>
-                  {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
+                <CategoryPicker categories={categories} value={form.category} onChange={value => set('category', value)} />
               </div>
               <div className="field">
                 <ModelPicker value={form.models ?? []} onChange={(value) => set('models', value)} />

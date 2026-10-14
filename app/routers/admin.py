@@ -44,6 +44,7 @@ from app.schemas.prompt import PromptListResponse, SortOption
 from app.services import admin_service, crawl_service, crawl_task_service
 from app.services.submission_service import SubmissionConflict
 from app.utils.admin_auth import verify_admin_key
+from app.utils.category_catalog import CategoryKey
 
 router = APIRouter(
     prefix="/api/admin",
@@ -111,6 +112,7 @@ def _draft_to_out(draft: CrawlDraft) -> CrawlDraftOut:
 
 @router.get("/prompts", response_model=AdminPromptListResponse)
 async def list_prompts(
+    category: CategoryKey | None = None,
     is_published: bool | None = Query(None, description="筛选发布状态，不传则返回全部（含草稿）"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -119,7 +121,9 @@ async def list_prompts(
     """
     后台内容列表，默认按创建时间倒序，可用 is_published=false 筛选出"待审核草稿"。
     """
-    rows, total = await admin_service.list_prompts_for_admin(db, is_published, page, page_size)
+    rows, total = await admin_service.list_prompts_for_admin(
+        db, is_published, page, page_size, category=category
+    )
     return AdminPromptListResponse(
         items=[AdminPromptOut.model_validate(row) for row in rows],
         total=total,
@@ -257,13 +261,14 @@ async def handle_report(
 
 @router.get("/crawl-drafts", response_model=CrawlDraftListResponse)
 async def list_crawl_drafts(
+    category: CategoryKey | None = None,
     status: str | None = Query(None, description="筛选状态：pending / approved / rejected，不传则返回全部"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> CrawlDraftListResponse:
     """采集草稿列表，默认按创建时间倒序，常用 status=pending 筛选出"待审核"的草稿。"""
-    rows, total = await crawl_service.list_drafts(db, status, page, page_size)
+    rows, total = await crawl_service.list_drafts(db, status, page, page_size, category=category)
     return CrawlDraftListResponse(
         items=[_draft_to_out(draft) for draft in rows],
         total=total,

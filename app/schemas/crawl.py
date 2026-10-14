@@ -9,6 +9,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.utils.category_catalog import CategoryKey
+
 
 class CrawlDraftImageOut(BaseModel):
     """草稿配图，image_url 由路由层拼接成可访问的本地静态文件地址（见 app/routers/admin.py）。"""
@@ -62,7 +64,7 @@ class CrawlDraftReviewUpdate(BaseModel):
     """
 
     extracted_prompt_text: str | None = None
-    extracted_category: str | None = None
+    extracted_category: CategoryKey | None = None
     extracted_models: str | None = None  # 逗号分隔字符串，如 "即梦,Midjourney"
 
 
@@ -77,7 +79,7 @@ class CrawlDraftApprove(BaseModel):
 
     title: str  # 最终的正式标题，通常是人工从 raw_title 整理出的更规范版本
     prompt_text: str | None = None  # 不传则用草稿上的 extracted_prompt_text
-    category: str | None = None  # 不传则用草稿上的 extracted_category
+    category: CategoryKey | None = None  # 不传则用草稿上的 extracted_category
     models: list[str] | None = None  # 不传则用草稿上的 extracted_models（逗号分隔字符串转数组）
     is_published: bool = False  # 默认转为正式内容后仍是草稿态，需要再单独点发布
 

@@ -21,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.database import AsyncSessionLocal
 from app.models import Prompt, PromptImage
 from app.services import content_review_service
+from app.utils.category_catalog import CATEGORY_LABELS
 
 
 async def main() -> None:
@@ -55,6 +56,11 @@ async def main() -> None:
             except content_review_service.ContentReviewError as exc:
                 print(f"  ❌ 审核失败，跳过，保持下线: {exc}\n")
                 failed += 1
+                continue
+
+            if review.suggested_category not in CATEGORY_LABELS:
+                print("分类用途不明确，保持原状态，交人工审核")
+                kept_offline += 1
                 continue
 
             if not review.has_credible_image:

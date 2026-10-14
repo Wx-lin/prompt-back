@@ -68,9 +68,16 @@ async def create_submission(db: AsyncSession, user: User, body: SubmissionCreate
 
 
 async def list_submissions(
-    db: AsyncSession, user_id: uuid.UUID | None, status: str | None, page: int, page_size: int
+    db: AsyncSession,
+    user_id: uuid.UUID | None,
+    status: str | None,
+    page: int,
+    page_size: int,
+    category: str | None = None,
 ):
     query = select(Prompt).where(Prompt.review_status.is_not(None))
+    if category is not None:
+        query = query.where(Prompt.category == category)
     if user_id is not None:
         query = query.where(Prompt.submitter_id == user_id)
     if status is not None:
@@ -117,7 +124,11 @@ async def to_out(db: AsyncSession, prompt: Prompt) -> SubmissionOut:
 
 
 async def review_submission(
-    db: AsyncSession, prompt_id: uuid.UUID, approved: bool, note: str | None = None
+    db: AsyncSession,
+    prompt_id: uuid.UUID,
+    approved: bool,
+    note: str | None = None,
+    category: str | None = None,
 ) -> Prompt | None:
     prompt = await db.scalar(
         select(Prompt).where(Prompt.id == prompt_id, Prompt.review_status.is_not(None)).with_for_update()
@@ -126,6 +137,11 @@ async def review_submission(
         return None
     if prompt.review_status != "pending":
         raise SubmissionConflict("作品已审核，请刷新列表")
+    if approved:
+        from app.utils.category_catalog import CATEGORY_LABELS
+
+        if (category or prompt.category) not in CATEGORY_LABELS:
+            raise SubmissionConflict("请先选择有效分类")
     assets = (await db.scalars(select(SubmissionAsset).where(SubmissionAsset.prompt_id == prompt.id))).all()
     keys = [asset.object_key for asset in assets]
     if approved:
@@ -136,6 +152,8 @@ async def review_submission(
         except Exception:
             await restore_private(keys)
             raise
+    if approved and category is not None:
+        prompt.category = category
     prompt.review_status = "approved" if approved else "rejected"
     prompt.review_note = note
     prompt.reviewed_at = datetime.now(UTC)

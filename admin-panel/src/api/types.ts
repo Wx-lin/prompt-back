@@ -101,21 +101,6 @@ export interface CrawlPlatformInfo {
   warning: string | null
 }
 
-/** 分类枚举，与后端 app/routers/categories.py 的 CATEGORY_LABELS 保持一致。
- *  放在前端本地而不是每次请求接口获取，是为了让表单下拉框立刻可用、少一次网络往返。
- *  后端分类有变动时这里要同步修改。
- *  2026-10-09 改为按"创作意图"分类的八分类体系，原七分类已废弃。 */
-export const CATEGORY_LABELS: Record<string, string> = {
-  portrait: '人像写真',
-  avatar: '头像 & IP',
-  poster: '海报 & 封面',
-  illustration: '插画 & 概念艺术',
-  photography: '模拟摄影',
-  character: '角色 & 人物设计',
-  image_edit: '图片编辑',
-  workflow: '工作流 & 技巧',
-}
-
 /** 采集草稿状态的中文标签 */
 export const DRAFT_STATUS_LABELS: Record<string, string> = {
   pending: '待审核',

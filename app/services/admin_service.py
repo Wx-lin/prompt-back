@@ -17,6 +17,7 @@ from app.models import ContentReport, Prompt, PromptImage, SubmissionAsset
 from app.schemas.admin import AdminPromptCreate, AdminPromptUpdate
 from app.services import cos_service
 from app.services.submission_service import SubmissionConflict, restore_private
+from app.utils.category_catalog import CATEGORY_LABELS
 from app.utils.model_labels import normalize_model_labels
 
 
@@ -25,6 +26,7 @@ async def list_prompts_for_admin(
     is_published: bool | None,
     page: int,
     page_size: int,
+    category: str | None = None,
 ) -> tuple[list[Prompt], int]:
     """
     后台内容列表查询，和对外接口 prompt_service.list_prompts 的区别：
@@ -33,6 +35,8 @@ async def list_prompts_for_admin(
     - 按创建时间倒序，方便看到最新采集的内容
     """
     query = select(Prompt)
+    if category is not None:
+        query = query.where(Prompt.category == category)
     if is_published is not None:
         query = query.where(Prompt.is_published.is_(is_published))
 
@@ -108,6 +112,9 @@ async def update_prompt(db: AsyncSession, prompt_id: uuid.UUID, body: AdminPromp
     if prompt is None:
         return None
 
+    if body.is_published is True and (body.category or prompt.category) not in CATEGORY_LABELS:
+        raise SubmissionConflict("请先将旧分类调整为有效新分类")
+
     if prompt.review_status is not None:
         if body.images is not None:
             raise SubmissionConflict("用户投稿图片请通过投稿审核页面处理")
@@ -164,6 +171,8 @@ async def set_published(db: AsyncSession, prompt_id: uuid.UUID, is_published: bo
     prompt = await db.scalar(select(Prompt).where(Prompt.id == prompt_id).with_for_update())
     if prompt is None:
         return None
+    if is_published and prompt.category not in CATEGORY_LABELS:
+        raise SubmissionConflict("请先将旧分类调整为有效新分类")
     if prompt.review_status is not None:
         if is_published and prompt.review_status != "approved":
             raise SubmissionConflict("用户投稿必须先通过投稿审核")

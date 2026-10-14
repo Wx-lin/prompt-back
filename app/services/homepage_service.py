@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.models import Prompt, PromptImage
 from app.schemas.homepage import FeaturedResponse
 from app.schemas.prompt import PromptListItem
+from app.utils.public_prompts import public_prompt_condition
 
 
 class FeaturedConflict(Exception):
@@ -36,7 +37,7 @@ def visible_featured_query():
         select(Prompt)
         .where(
             Prompt.homepage_rank.is_not(None),
-            Prompt.is_published.is_(True),
+            public_prompt_condition(),
             Prompt.images.any(func.trim(PromptImage.image_url) != ""),
         )
         .order_by(Prompt.homepage_rank, Prompt.id)
@@ -81,7 +82,7 @@ async def replace_featured(
                     select(Prompt)
                     .where(
                         Prompt.id.in_(prompt_ids),
-                        Prompt.is_published.is_(True),
+                        public_prompt_condition(),
                         Prompt.images.any(func.trim(PromptImage.image_url) != ""),
                     )
                     .with_for_update()

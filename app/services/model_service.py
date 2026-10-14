@@ -5,12 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Prompt
 from app.utils.model_labels import MODEL_FAMILIES, model_group, normalize_model_label, normalize_model_labels
+from app.utils.public_prompts import public_prompt_condition
 
 
 async def published_labels(db: AsyncSession) -> list[str]:
-    result = await db.execute(
-        select(func.unnest(Prompt.models)).where(Prompt.is_published.is_(True)).distinct()
-    )
+    result = await db.execute(select(func.unnest(Prompt.models)).where(public_prompt_condition()).distinct())
     return list(result.scalars().all())
 
 

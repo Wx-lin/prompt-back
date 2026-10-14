@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.routers.categories import CATEGORY_LABELS
+from app.utils.category_catalog import CATEGORY_LABELS, CategoryKey
 from app.utils.model_labels import normalize_model_labels
 
 
@@ -73,3 +73,8 @@ class SubmissionUploadOut(BaseModel):
 class SubmissionReject(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     note: str = Field(min_length=1, max_length=1000)
+
+
+class SubmissionApprove(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: CategoryKey | None = None

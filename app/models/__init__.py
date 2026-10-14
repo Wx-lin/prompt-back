@@ -4,6 +4,7 @@
 新增模型时必须在此文件补充 import，否则 alembic 不会识别到新表。
 """
 
+from app.models.category_migration import CategoryLegacyMembership, CategoryMigrationChange
 from app.models.content_report import ContentReport
 from app.models.crawl_draft import CrawlDraft, CrawlDraftImage
 from app.models.crawl_schedule import CrawlSchedule
@@ -15,6 +16,8 @@ from app.models.submission_asset import SubmissionAsset
 from app.models.user import User
 
 __all__ = [
+    "CategoryLegacyMembership",
+    "CategoryMigrationChange",
     "ContentReport",
     "CrawlDraft",
     "CrawlDraftImage",
