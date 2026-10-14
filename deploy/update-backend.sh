@@ -105,7 +105,7 @@ cp -a backend "$backup/backend.before"
 sudo -n docker compose exec -T postgres pg_dump -U aigc -d aigc_prompt -Fc > "$backup/database.dump"
 test -s "$backup/database.dump"
 sudo -n docker compose exec -T postgres pg_restore --list < "$backup/database.dump" > "$backup/database.contents"
-sudo -n docker compose exec -T api alembic current > "$backup/revision.before"
+sudo -n docker compose exec -T postgres psql -U aigc -d aigc_prompt -Atc 'SELECT version_num FROM alembic_version' > "$backup/revision.before"
 tar -xzf "$backup/release.tar.gz" -C "$backup"
 # Replace only source directories; leave admin artifacts and all runtime state intact.
 for dir in app scripts alembic deploy; do

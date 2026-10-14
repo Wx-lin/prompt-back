@@ -351,3 +351,26 @@ def test_workflow_only_explicit_dispatch_enables_migration(event, target, expect
         check=True,
     )
     assert result.stdout == expected
+
+
+def test_revision_backup_reads_database_when_old_image_cannot_resolve_new_revision(tmp_path):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    record = next(line for line in source.splitlines() if line.endswith('> "$backup/revision.before"'))
+    prefix = r"""
+set -Eeuo pipefail
+backup="$1"
+sudo() {
+  case "$*" in
+    *"api alembic current") echo "Can't locate revision identified by 9c35e1a62f4" >&2; return 1 ;;
+    *"postgres psql"*) printf '9c35e1a62f4\n' ;;
+    *) return 9 ;;
+  esac
+}
+"""
+    result = subprocess.run(
+        ["bash", "-c", prefix + record, "fixture", str(tmp_path)], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "revision.before").read_text() == "9c35e1a62f4\n"
