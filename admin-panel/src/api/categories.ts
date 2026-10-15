@@ -6,7 +6,7 @@ export function useCategories() {
   const [error, setError] = useState('')
   useEffect(() => {
     let active = true
-    apiRequest<unknown>('/api/categories').then(normalizeCategories).then(result => { if (active) setCategories(result) })
+    apiRequest<unknown>('/api/admin/categories').then(normalizeCategories).then(result => { if (active) setCategories(result) })
       .catch(err => { if (active) setError(err instanceof Error ? err.message : '分类加载失败') })
     return () => { active = false }
   }, [])

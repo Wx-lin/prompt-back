@@ -41,6 +41,7 @@ export default function SubmissionsPage() {
   async function review(item: Submission, action: 'approve' | 'reject', note: string, category?: string) {
     if (requestPending.current || item.review_status !== 'pending') return
     if (action === 'reject' && (!note.trim() || note.trim().length > 1000)) return
+    if (action === 'approve' && !categories.length) { setError('分类目录尚未加载，请刷新页面后重试'); return }
     if (action === 'approve' && !isValidCategory(categories, category ?? '')) { setError('请选择有效分类'); return }
     requestPending.current = true
     setBusy(item.id)

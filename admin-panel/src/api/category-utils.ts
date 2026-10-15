@@ -11,3 +11,6 @@ export function normalizeCategories(value: unknown): Category[] {
 }
 export function isValidCategory(categories: Category[], key: string): boolean { return categories.some(item => item.key === key) }
 export function categoryLabel(categories: Category[], key: string): string { return categories.find(item => item.key === key)?.label ?? LEGACY_LABELS[key] ?? key }
+
+/** Only a loaded catalog can identify genuinely retired keys. */
+export function isLegacyCategory(categories: Category[], key: string): boolean { return categories.length > 0 && !!key && !isValidCategory(categories, key) }

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import CrawlDraft, Prompt
+from app.routers.categories import list_categories
 from app.schemas.admin import (
     AdminPromptCreate,
     AdminPromptListResponse,
@@ -51,6 +52,12 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(verify_admin_key)],
 )
+
+
+@router.get("/categories")
+async def list_admin_categories(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """Reuse the public catalog via the authenticated admin gateway route."""
+    return await list_categories(db)
 
 
 # MediaCrawler 子进程落盘的媒体目录按平台代号命名（见 crawl_task_service.PLATFORM_SPECS
