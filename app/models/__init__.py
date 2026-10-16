@@ -31,3 +31,4 @@ __all__ = [
     "UserCollect",
     "UserLike",
 ]
+from app.models.seo import SeoSnapshot  # noqa: F401

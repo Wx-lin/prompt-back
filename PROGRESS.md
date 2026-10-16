@@ -406,3 +406,14 @@ DATABASE_URL=postgresql+asyncpg://wangxinlin@localhost:5432/aigc_prompt_dev
 - 隔离测试服务已停止，相关schema检查为0。未提交、推送、发布、生产迁移或下架。执行说明在docs/deployment/2026-10-14-category-upgrade.md，清单/快照位于工作区artifacts/category-review-2026-10-14（不进入公开站点或Git仓库）。生产执行前须重新导出、核对并发变化、备份，并确认逐条归类与下架方案。
 
 - 发布前复核：生产数据与10:33审核快照完全一致；用户已明确授权106条归类与23条暂下架及上线。将未发布迁移ID规范为纯hex `9c35e1a62f4`，避免现有发布revision门禁拒绝，不改自动迁移白名单。独立审查发现并修复旧分类重新上架路径，先RED再GREEN，新增后全量224 tests通过。主站/后台npm audit为0；Python保持既有python-jose/ecdsa公告告警，JWT显式HS256/对称secret路径经审查不满足攻击前提，不宣称Python audit为0。
+
+## 2026-10-16 SEO 搜索表现
+
+- 新增管理员 `/admin/seo` 页面与独立鉴权的 `/api/admin/seo`、`/api/admin/seo/import`；复用现有后台样式、表格与 ECharts，不引入 UI 库。
+- Google/百度独立查看，日期范围、曝光/点击/CTR/平均排名、趋势、关键词/落地页分页表；CSV 预览后确认导入。缺失不补零，总量只取日期维度，明确来源时区与最近导入时间。
+- 增加 SEO snapshot 模型及迁移 `a3e6b18d4092`（前置 `9c35e1a62f4`）；独立本地 PostgreSQL 执行完整迁移成功。上线前应审阅迁移并明确执行，不修改部署迁移白名单。
+- 管理端 19 项测试通过，TypeScript/Vite build 成功；lint 仅现有文件警告。后端 SEO 13 项测试通过，新增模块覆盖率98%；前台 SEO 181 项测试和桌面/手机2项E2E通过。
+- 真实本地浏览器+独立PostgreSQL测试通过：CSV预览/保存、图表、每日总量不叠加关键词、缺失日期、引擎切换、移动无溢出、503错误非假零。截图位于工作区 artifacts/seo-2026-10-16；均为明确测试数据，不能当线上搜索成绩。
+- 审查修复：文件异步读取用generation gate防止旧预览复活；平均排名上限防止聚合溢出。
+- 尚未提交/推送/部署；Google/Baidu账户未验证、自动同步未配置、真实导出格式尚未拿到。当前仅人工导入模式。部署后必须真实验证正式域名下新管理API及页面，不能用本地Vite代理替代网关验收。
+- 数据口径、导入限制见 docs/seo-search-performance.md；实现计划见 docs/superpowers/plans/2026-10-16-seo-performance.md。

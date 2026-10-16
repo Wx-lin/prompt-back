@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './store/auth'
 import DashboardPage from './pages/DashboardPage'
+import SeoPage from './pages/SeoPage'
 import UsersPage from './pages/UsersPage'
 import LoginPage from './pages/LoginPage'
 import Layout from './components/Layout'
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/seo" element={<SeoPage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/prompts" element={<PromptsPage />} />
           <Route path="/submissions" element={<SubmissionsPage />} />

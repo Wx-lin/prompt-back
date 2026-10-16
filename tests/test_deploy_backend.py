@@ -280,16 +280,20 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
 
 
 @pytest.mark.parametrize(
-    "permission,current,head,expected,upgraded",
+    "permission,current,head,expected,upgraded,reviewed",
     [
-        ("true", "e7a13c9b40d2", "f8b24d0c51e3", 0, True),
-        ("true", "f8b24d0c51e3", "f8b24d0c51e3", 0, False),
-        ("true", "5c8e9f0a12b3", "f8b24d0c51e3", 1, False),
-        ("true", "e7a13c9b40d2", "ffffffffffff", 1, False),
-        ("false", "e7a13c9b40d2", "f8b24d0c51e3", 1, False),
+        ("true", "e7a13c9b40d2", "f8b24d0c51e3", 0, True, "f8b24d0c51e3"),
+        ("true", "f8b24d0c51e3", "f8b24d0c51e3", 0, False, "f8b24d0c51e3"),
+        ("true", "5c8e9f0a12b3", "f8b24d0c51e3", 1, False, "f8b24d0c51e3"),
+        ("true", "e7a13c9b40d2", "ffffffffffff", 1, False, "f8b24d0c51e3"),
+        ("false", "e7a13c9b40d2", "f8b24d0c51e3", 1, False, "f8b24d0c51e3"),
+        ("true", "9c35e1a62f4", "a3e6b18d4092", 0, True, "a3e6b18d4092"),
+        ("true", "a3e6b18d4092", "a3e6b18d4092", 0, False, "a3e6b18d4092"),
+        ("false", "9c35e1a62f4", "a3e6b18d4092", 1, False, "a3e6b18d4092"),
+        ("true", "e7a13c9b40d2", "a3e6b18d4092", 1, False, "a3e6b18d4092"),
     ],
 )
-def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded):
+def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded, reviewed):
     import os
     import subprocess
 
@@ -301,7 +305,7 @@ set -Eeuo pipefail
 backup="$TEST_DIRECTORY"
 migrate="$TEST_PERMISSION"
 auto_migration=e7a13c9b40d2
-reviewed_migration=f8b24d0c51e3
+reviewed_migration="$TEST_REVIEWED"
 admin_hash=
 revision="$TEST_REVISION"
 sudo() {
@@ -317,6 +321,7 @@ sudo() {
         **os.environ,
         "TEST_DIRECTORY": str(tmp_path),
         "TEST_PERMISSION": permission,
+        "TEST_REVIEWED": reviewed,
         "TEST_REVISION": current,
         "TEST_HEAD": head,
     }
@@ -329,6 +334,8 @@ sudo() {
     "event,target,expected",
     [
         ("push", "f8b24d0c51e3", "false:"),
+        ("push", "a3e6b18d4092", "false:"),
+        ("workflow_dispatch", "a3e6b18d4092", "true:a3e6b18d4092"),
         ("workflow_dispatch", "none", "false:"),
         ("workflow_dispatch", "f8b24d0c51e3", "true:f8b24d0c51e3"),
         ("workflow_dispatch", "ffffffffffff", "false:"),

@@ -26,6 +26,7 @@ from app.routers import (
     model_catalog,
     prompts,
     search,
+    seo,
     submissions,
     users,
 )
@@ -61,6 +62,15 @@ app.add_middleware(
 
 app.add_middleware(SubmissionBodyLimit)
 
+
+@app.middleware("http")
+async def prevent_seo_cache(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/admin/seo"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 app.include_router(submissions.router)
 app.include_router(admin_submissions.router)
 app.include_router(prompts.router)
@@ -71,6 +81,7 @@ app.include_router(model_catalog.router)
 app.include_router(search.router)
 app.include_router(admin.router)
 app.include_router(admin_insights.router)
+app.include_router(seo.router)
 app.include_router(crawl_operations.router)
 
 # 爬虫采集图片的本地静态文件服务：OSS 密钥配置好之前的临时方案，仅用于本地开发，

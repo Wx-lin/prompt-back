@@ -3,6 +3,7 @@ import { type ReactNode } from 'react'
 import { useAuth } from '../store/auth'
 
 const navigation = [
+  { to: '/seo', label: 'SEO 搜索表现', icon: 'M3 3v18h18M7 14l4-4 4 2 5-7' },
   { to: '/dashboard', label: '数据大盘', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
   { to: '/users', label: '用户管理', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0' },
   { to: '/homepage', label: '首页推荐', icon: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z' },
@@ -16,7 +17,7 @@ const navigation = [
 export default function Layout({ children }: { children: ReactNode }) {
   const { logout } = useAuth()
   const { pathname } = useLocation()
-  const insights = pathname === '/dashboard' || pathname === '/users'
+  const insights = pathname === '/dashboard' || pathname === '/users' || pathname === '/seo'
   return <div className={`layout${insights ? ' insights-layout' : ''}`}>
     <aside className="sidebar">
       <div className="sidebar-brand">{insights && <span className="sidebar-mark" aria-hidden="true">A</span>}<span className="sidebar-brand-copy">AIGC Prompt<small>运营工作台</small></span></div>

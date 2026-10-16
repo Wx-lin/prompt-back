@@ -7,7 +7,7 @@ migrate=${3:-false}
 admin_hash=${4:-}
 auto_migration=${5:-}
 reviewed_migration=${6:-}
-[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 ]]
+[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 ]]
 [[ -z "$admin_hash" || "$admin_hash" =~ ^[a-f0-9]{64}$ ]]
 [[ -z "$auto_migration" || "$auto_migration" == e7a13c9b40d2 ]]
 [[ "$migrate" == true || "$migrate" == false ]]
@@ -153,7 +153,12 @@ current=$(awk '/^[0-9a-f]+([[:space:]]|$)/ {print $1}' "$backup/revision.after")
 heads=$(awk '/\(head\)/ {print $1}' "$backup/heads")
 [[ "$heads" =~ ^[0-9a-f]+$ ]] || { echo 'Expected one migration head; deployment stopped'; exit 1; }
 if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
-    [[ "$heads" == "$reviewed_migration" && ( "$current" == e7a13c9b40d2 || "$current" == "$heads" ) ]] || {
+    case "$reviewed_migration" in
+        f8b24d0c51e3) reviewed_parent=e7a13c9b40d2 ;;
+        a3e6b18d4092) reviewed_parent=9c35e1a62f4 ;;
+        *) echo "Unknown reviewed migration; stopped"; exit 1 ;;
+    esac
+    [[ "$heads" == "$reviewed_migration" && ( "$current" == "$reviewed_parent" || "$current" == "$heads" ) ]] || {
         echo 'Reviewed dispatch migration does not match the database parent and release head; stopped'
         exit 1
     }
