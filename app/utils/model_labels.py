@@ -65,3 +65,14 @@ def model_group(label: str) -> str:
         ),
         "其他",
     )
+
+
+def is_catalog_model(label: str) -> bool:
+    """Only recognized model names/version forms enter public filters; retain raw data elsewhere."""
+    value = normalize_model_label(label)
+    families = (*MODEL_FAMILIES, "Gemini", "Grok", "Seedream", "GPT-4o")
+    version = (
+        r"(?:[ .-](?:V?\d+(?:\.\d+)*(?:Pro|Lite)?|XL|Pro|Lite|dev|schnell|Image)"
+        r"(?:[ .-](?:\d+(?:\.\d+)*|dev|pro|lite|schnell|turbo|fast|omni|preview|ultra|max))*)?"
+    )
+    return any(re.fullmatch(re.escape(family) + version, value, re.I) for family in families)

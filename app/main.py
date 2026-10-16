@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.routers import (
     admin,
+    admin_insights,
     admin_submissions,
     auth,
     categories,
@@ -69,6 +70,7 @@ app.include_router(categories.router)
 app.include_router(model_catalog.router)
 app.include_router(search.router)
 app.include_router(admin.router)
+app.include_router(admin_insights.router)
 app.include_router(crawl_operations.router)
 
 # 爬虫采集图片的本地静态文件服务：OSS 密钥配置好之前的临时方案，仅用于本地开发，
