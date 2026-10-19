@@ -5,6 +5,7 @@ import { getDashboard, type DashboardData } from '../api/insights'
 import { ApiError } from '../api/client'
 import { formatBeijingTime } from '../api/insights-utils'
 import { useAuth } from '../store/auth'
+import TrafficPanel from '../components/TrafficPanel'
 import './insights.css'
 
 export default function DashboardPage() {
@@ -45,6 +46,7 @@ export default function DashboardPage() {
         <Metric icon="grid" label="作品总量" value={data.content.total} detail={`其中 ${data.content.published.toLocaleString()} 件已公开`} foot="内容资产" />
         <Metric icon="image" label="效果图总量" value={data.content.images} detail="按图片计数，一件作品可有多张" foot="图片资产" />
       </section>
+      <TrafficPanel />
       <div className="insights-charts-grid">
         <section className="insights-panel category-panel"><div className="insights-panel-heading"><div><div className="panel-eyebrow">CONTENT DISTRIBUTION</div><h2>分类库存</h2><p>各分类作品与公开数量对比</p></div><span className="insights-pill">{data.categories.filter(item => item.key !== '__other__').length} 个分类{data.categories.some(item => item.key === '__other__') ? ' + 历史' : ''}</span></div>
           <div className="category-chart-scroll"><Suspense fallback={<div className="chart-loading">图表加载中…</div>}><InsightChart option={categoryOption} label="分类库存柱状图，对比每个分类的作品总量与已公开数量" className="category-chart" /></Suspense></div>

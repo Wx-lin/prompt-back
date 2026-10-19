@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database import Base, get_db
 from app.models import CrawlDraft, Prompt, PromptImage, User
 from app.routers.admin_insights import router
+from app.routers.traffic import router as traffic_router
 from app.utils.admin_auth import verify_admin_key
 
 
@@ -95,6 +96,7 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
+app.include_router(traffic_router)
 
 # Deliberately use a local-only test identity, never a production administrator secret.
 

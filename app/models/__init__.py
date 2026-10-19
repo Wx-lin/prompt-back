@@ -32,3 +32,4 @@ __all__ = [
     "UserLike",
 ]
 from app.models.seo import SeoSnapshot  # noqa: F401
+from app.models.visitor_daily import TrafficTrackingState, VisitorDaily  # noqa: F401

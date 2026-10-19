@@ -28,6 +28,7 @@ from app.routers import (
     search,
     seo,
     submissions,
+    traffic,
     users,
 )
 from app.scheduler import create_scheduler
@@ -66,7 +67,7 @@ app.add_middleware(SubmissionBodyLimit)
 @app.middleware("http")
 async def prevent_seo_cache(request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/api/admin/seo"):
+    if request.url.path.startswith(("/api/admin/seo", "/api/admin/traffic", "/api/analytics/visit")):
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -82,6 +83,7 @@ app.include_router(search.router)
 app.include_router(admin.router)
 app.include_router(admin_insights.router)
 app.include_router(seo.router)
+app.include_router(traffic.router)
 app.include_router(crawl_operations.router)
 
 # 爬虫采集图片的本地静态文件服务：OSS 密钥配置好之前的临时方案，仅用于本地开发，
