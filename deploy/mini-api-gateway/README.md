@@ -28,3 +28,8 @@ Use the **same committed artifact**: `python3 release.py rollback /opt/aigc-prom
 Rollback shares the release lock, verifies backup hashes and requires current live config to match the saved candidate. It refuses to overwrite intervening deployment changes. It restores the original in place, tests nginx, then reloads. If rollback application fails, it restores the pre-rollback candidate rather than leaving a partial file.
 
 The source artifact and its SHA must be retained with the private backups. Do not expose original nginx files, TLS material, environment files or credentials in public artifacts/logs.
+
+
+## Bind mount verification
+
+The release now verifies the container's mounted nginx file hash against the host before any write, after write and after reload. Historical atomic replacements can leave the container pinned to a different inode even when the host pathname matches; in that case a reload-only release fails before touching the file. A separately approved gateway-only restart may be required to refresh that binding. The 2026-10-20 deployment encountered this historical state, restarted only the unchanged gateway image, and verified the resulting container/host hashes and public HTTPS API. No API/frontend restart or database action occurred.

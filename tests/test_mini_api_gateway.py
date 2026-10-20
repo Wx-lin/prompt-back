@@ -53,6 +53,7 @@ server { listen 8443; server_name 62.234.69.93; }
             inode = target.stat().st_ino
             with (
                 patch.object(gateway, "TARGET", target),
+                patch.object(gateway, "verify_mount"),
                 patch.object(gateway, "nginx"),
                 patch.object(gateway, "reload_nginx"),
             ):
@@ -70,6 +71,7 @@ server { listen 8443; server_name 62.234.69.93; }
             target.write_bytes(b"original")
             with (
                 patch.object(gateway, "TARGET", target),
+                patch.object(gateway, "verify_mount"),
                 patch.object(gateway, "nginx", side_effect=[RuntimeError("invalid config"), None]),
                 patch.object(gateway, "reload_nginx") as reload,
             ):
@@ -85,6 +87,7 @@ server { listen 8443; server_name 62.234.69.93; }
             error = gateway.subprocess.TimeoutExpired(cmd="nginx -t", timeout=25)
             with (
                 patch.object(gateway, "TARGET", target),
+                patch.object(gateway, "verify_mount"),
                 patch.object(gateway, "nginx", side_effect=[error, None]),
                 patch.object(gateway, "reload_nginx") as reload,
             ):
@@ -99,3 +102,24 @@ server { listen 8443; server_name 62.234.69.93; }
             gateway.reload_nginx()
             self.assertEqual(run.call_count, 2)
             self.assertTrue(all(call.kwargs["timeout"] == 25 for call in run.call_args_list))
+
+    def test_bind_mount_hash_is_checked(self):
+        with patch.object(gateway.subprocess, "run") as run:
+            run.return_value.stdout = gateway.digest(b"old") + "  /etc/nginx/conf.d/default.conf\n"
+            gateway.verify_mount(gateway.digest(b"old"))
+            with self.assertRaisesRegex(ValueError, "bind mount differs"):
+                gateway.verify_mount(gateway.digest(b"new"))
+            self.assertEqual(run.call_args.kwargs["timeout"], 25)
+
+    def test_stale_mount_is_rejected_before_write(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "nginx.conf"
+            target.write_bytes(b"original")
+            with (
+                patch.object(gateway, "TARGET", target),
+                patch.object(gateway, "verify_mount", side_effect=ValueError("stale mount")),
+                patch.object(gateway, "write_in_place") as write,
+            ):
+                with self.assertRaisesRegex(ValueError, "stale mount"):
+                    gateway.install(b"candidate", b"original", gateway.digest(b"original"))
+                write.assert_not_called()

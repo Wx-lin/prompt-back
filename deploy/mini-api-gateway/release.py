@@ -92,18 +92,34 @@ def reload_nginx():
     subprocess.run(["docker", "exec", CONTAINER, "nginx", "-s", "reload"], check=True, timeout=25)
 
 
+def verify_mount(expected):
+    result = subprocess.run(
+        ["docker", "exec", CONTAINER, "sha256sum", "/etc/nginx/conf.d/default.conf"],
+        check=True,
+        timeout=25,
+        capture_output=True,
+        text=True,
+    )
+    if result.stdout.split()[0] != expected:
+        raise ValueError("Container nginx bind mount differs from host; refusing reload-only release")
+
+
 def install(candidate, original, expected):
     if digest(TARGET.read_bytes()) != expected:
         raise ValueError("Concurrent nginx configuration change; refusing overwrite")
+    verify_mount(expected)
     inode = TARGET.stat().st_ino
     try:
         write_in_place(candidate)
         if TARGET.stat().st_ino != inode:
             raise ValueError("Target inode changed")
+        verify_mount(digest(candidate))
         nginx("-t")
         reload_nginx()
+        verify_mount(digest(candidate))
     except BaseException:
         write_in_place(original)
+        verify_mount(digest(original))
         nginx("-t")
         reload_nginx()
         raise
