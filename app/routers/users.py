@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import Prompt, User, UserCollect
 from app.schemas.prompt import PromptListItem, PromptListResponse
+from app.services.homepage_service import thumbnail_for_prompt
 from app.utils.deps import get_current_user
 from app.utils.public_prompts import public_prompt_condition
 
@@ -43,7 +44,7 @@ async def get_my_collects(
             title=row.title,
             category=row.category,
             models=row.models,
-            thumbnail_url=row.images[0].thumbnail_url if row.images else None,
+            thumbnail_url=thumbnail_for_prompt(row),
             like_count=row.like_count,
             view_count=row.view_count,
             author_name=row.author_name,
