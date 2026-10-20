@@ -2,10 +2,11 @@
 认证与用户相关 Pydantic Schema。
 """
 
+import unicodedata
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class SendCodeRequest(BaseModel):
@@ -52,3 +53,18 @@ class UserOut(BaseModel):
     nickname: str | None = None
     avatar_url: str | None = None
     created_at: datetime
+
+
+class UserProfileUpdate(BaseModel):
+    """Only a display name is client-controlled; avatar files are parsed separately."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nickname: str = Field(min_length=1, max_length=30)
+
+    @field_validator("nickname", mode="before")
+    @classmethod
+    def validate_nickname(cls, value):
+        if not isinstance(value, str) or any(unicodedata.category(char).startswith("C") for char in value):
+            raise ValueError("昵称不能包含控制字符")
+        return value.strip()

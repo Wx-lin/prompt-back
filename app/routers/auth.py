@@ -21,7 +21,7 @@ from app.schemas.auth import (
     VerifyCodeRequest,
     WeChatLoginRequest,
 )
-from app.services import auth_service, email_service, wechat_auth
+from app.services import auth_service, email_service, user_profile, wechat_auth
 from app.utils.deps import get_current_user
 from app.utils.google_auth import (
     GoogleTokenInvalidError,
@@ -30,7 +30,7 @@ from app.utils.google_auth import (
 )
 from app.utils.jwt import create_access_token
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=["auth"], route_class=user_profile.ProfileRoute)
 
 
 @router.post("/wechat", response_model=TokenResponse)
@@ -106,4 +106,15 @@ async def google_login(body: GoogleLoginRequest, db: AsyncSession = Depends(get_
 @router.get("/me", response_model=UserOut)
 async def get_me(current_user: User = Depends(get_current_user)) -> UserOut:
     """获取当前登录用户信息。"""
-    return UserOut.model_validate(current_user)
+    return await user_profile.to_user_out(current_user)
+
+
+@router.post("/me/profile", response_model=UserOut)
+async def update_profile(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    redis_client: Redis = Depends(get_redis_client),
+) -> UserOut:
+    """主动完善当前小程序账号资料；昵称必填，头像可选且仅接受上传文件。"""
+    return await user_profile.update_from_form(request, db, current_user, redis_client)

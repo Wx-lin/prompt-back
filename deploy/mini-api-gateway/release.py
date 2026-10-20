@@ -22,6 +22,14 @@ SERVER_END = "# END REVIEWED MINI API SERVER\n"
 
 BROWSE_HTTP_SHA256 = "433bd3efc3f037adf42942f2dbd42cfa6691e68517c6aea9347088ad38d3d949"
 BROWSE_SERVER_SHA256 = "6045aca9faa99451ec5500f03dfb6d353a533e475be0e28b02857f011882d452"
+AUTH_HTTP_SHA256 = "cec0167efdc846f22b080f3dc943f67379485f8c2605de66ba3c661ddf6ade3c"
+AUTH_SERVER_SHA256 = "6045aca9faa99451ec5500f03dfb6d353a533e475be0e28b02857f011882d452"
+REVIEWED_PREVIOUS_FRAGMENTS = frozenset(
+    {
+        (BROWSE_HTTP_SHA256, BROWSE_SERVER_SHA256),
+        (AUTH_HTTP_SHA256, AUTH_SERVER_SHA256),
+    }
+)
 
 
 def digest(data):
@@ -62,11 +70,9 @@ def merge(original):
         server_start = original.index(SERVER_BEGIN) + len(SERVER_BEGIN)
         previous_http = original[http_start : original.index(HTTP_END)]
         previous_server = original[server_start : original.index(SERVER_END)]
-        if (
-            digest(previous_http.encode()) != BROWSE_HTTP_SHA256
-            or digest(previous_server.encode()) != BROWSE_SERVER_SHA256
-        ):
-            raise ValueError("Only the reviewed browse-only gateway can be upgraded")
+        previous_hashes = (digest(previous_http.encode()), digest(previous_server.encode()))
+        if previous_hashes not in REVIEWED_PREVIOUS_FRAGMENTS:
+            raise ValueError("Only the reviewed browse-only or auth gateway can be upgraded")
         _, base_end = domain_block(base)
         expected = (
             HTTP_BEGIN
