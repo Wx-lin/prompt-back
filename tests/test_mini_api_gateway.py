@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,18 @@ BASE = Path(__file__).resolve().parents[1] / "deploy/mini-api-gateway"
 spec = importlib.util.spec_from_file_location("gateway", BASE / "release.py")
 gateway = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gateway)
+
+
+BROWSE_HTTP = (
+    "# Include in nginx http {} scope. WeChat-only mini app allowlist.\nmap "
+    '"$request_method:$uri" $mini_api_allowed {\n    default 0;\n    "~^(GET)'
+    ':/mini-api/api/prompts$" 1;\n    "~^(GET):/mini-api/api/prompts/search$'
+    '" 1;\n    "~^(GET):/mini-api/api/prompts/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-'
+    '[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$" 1;\n    "~^(GET):/mini-'
+    "api/api/prompts/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-"
+    'F]{4}-[0-9a-fA-F]{12}/similar$" 1;\n    "~^(GET):/mini-api/api/(categor'
+    'ies|models)$" 1;\n}\n'
+)
 
 
 class GatewayTests(unittest.TestCase):
@@ -38,12 +51,56 @@ server { listen 8443; server_name 62.234.69.93; }
             with self.assertRaises(ValueError):
                 gateway.merge(original)
 
-    def test_allowlist_browse_only(self):
-        config = (BASE / "http.conf").read_text()
-        self.assertIn("default 0;", config)
-        self.assertNotIn("POST", config)
-        self.assertNotIn("/auth/", config)
-        self.assertNotIn("/admin/", config)
+    def test_allowlist_real_frontend_routes_and_denials(self):
+        patterns = re.findall(r'"~(.*?)" 1;', (BASE / "http.conf").read_text())
+
+        def allowed(method, path):
+            return any(re.fullmatch(pattern, method + ":/mini-api" + path) for pattern in patterns)
+
+        uuid = "12345678-abcd-1234-9876-123456789abc"
+        for method, path in [
+            ("POST", "/api/auth/wechat"),
+            ("GET", "/api/auth/me"),
+            ("GET", "/api/users/me/collects"),
+            ("POST", f"/api/prompts/{uuid}/like"),
+            ("DELETE", f"/api/prompts/{uuid}/collect"),
+        ]:
+            self.assertTrue(allowed(method, path), (method, path))
+        for method, path in [
+            ("GET", "/api/auth/wechat"),
+            ("POST", "/api/auth/me"),
+            ("POST", "/api/auth/send-code"),
+            ("POST", "/api/submissions"),
+            ("GET", "/api/admin/prompts"),
+            ("GET", "/api/prompts/me/collections"),
+            ("POST", "/api/prompts/not-uuid/like"),
+            ("GET", "/api/users/me"),
+        ]:
+            self.assertFalse(allowed(method, path), (method, path))
+
+    def test_upgrade_known_browse_blocks_and_preserve_unrelated_config(self):
+        original = "server { server_name aigc-prompt.com; location / { proxy_pass http://frontend; } }\n"
+        end = gateway.domain_block(original)[1]
+        previous = (
+            gateway.HTTP_BEGIN
+            + BROWSE_HTTP
+            + gateway.HTTP_END
+            + original[:end]
+            + gateway.SERVER_BEGIN
+            + (BASE / "server.conf").read_text()
+            + gateway.SERVER_END
+            + original[end:]
+        )
+        candidate = gateway.merge(previous)
+        self.assertEqual(gateway.remove(candidate), original)
+        self.assertIn("/api/auth/wechat", candidate)
+        with self.assertRaises(ValueError):
+            gateway.merge(previous.replace("default 0;", "default 1;"))
+        with self.assertRaises(ValueError):
+            gateway.merge(previous + gateway.HTTP_BEGIN + BROWSE_HTTP + gateway.HTTP_END)
+        with self.assertRaises(ValueError):
+            moved = previous.replace(gateway.HTTP_BEGIN + BROWSE_HTTP + gateway.HTTP_END, "")
+            gateway.merge(moved + gateway.HTTP_BEGIN + BROWSE_HTTP + gateway.HTTP_END)
 
     def test_install_preserves_inode_and_rejects_concurrent_change(self):
         with tempfile.TemporaryDirectory() as temporary:

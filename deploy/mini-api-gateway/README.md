@@ -1,6 +1,6 @@
-# Gateway-only HTTPS browsing release
+# Mini-program HTTPS gateway release
 
-This release exposes only GET prompt list/search/detail/similar, categories and models under `https://aigc-prompt.com/mini-api/api/...`. It does not deploy the backend, run migrations, expose login/writes, or change other sites. `/mini-api/api/auth/wechat` returns 404 until a separate reviewed backend/auth release.
+The deployed browse-only release exposes only GET prompt list/search/detail/similar, categories and models under `https://aigc-prompt.com/mini-api/api/...`. It does not deploy the backend, run migrations, expose login/writes, or change other sites. `/mini-api/api/auth/wechat` returns 404 until the pending auth upgrade described below is deployed with the backend.
 
 Files: `http.conf` is the method/path allowlist; `server.conf` proxies accepted requests to existing `api:8000`; `release.py` performs plan/apply/rollback. Tests are `tests/test_mini_api_gateway.py`.
 
@@ -33,3 +33,33 @@ The source artifact and its SHA must be retained with the private backups. Do no
 ## Bind mount verification
 
 The release now verifies the container's mounted nginx file hash against the host before any write, after write and after reload. Historical atomic replacements can leave the container pinned to a different inode even when the host pathname matches; in that case a reload-only release fails before touching the file. A separately approved gateway-only restart may be required to refresh that binding. The 2026-10-20 deployment encountered this historical state, restarted only the unchanged gateway image, and verified the resulting container/host hashes and public HTTPS API. No API/frontend restart or database action occurred.
+
+## Pending WeChat/auth upgrade (local draft)
+
+The current draft extends the prior GET-only release with exactly these frontend-used routes:
+
+- `POST /mini-api/api/auth/wechat`
+- `GET /mini-api/api/auth/me`
+- `GET /mini-api/api/users/me/collects` (the actual frontend endpoint; `/api/prompts/me/collections` is deliberately denied)
+- `POST` and `DELETE /mini-api/api/prompts/<canonical UUID>/like`
+- `POST` and `DELETE /mini-api/api/prompts/<canonical UUID>/collect`
+
+Email/Google login, uploads/submissions, arbitrary `me` paths, admin/crawl/analytics and unknown methods remain denied. Query parameters do not widen the path allowlist; FastAPI still validates parameters and JWT/user ownership.
+
+`release.py merge/plan` now supports replacement of **only the exact previously reviewed browse-only fragments**, identified by both fragment SHA256 hashes and their original scopes/positions. It removes the known blocks, checks the remaining config contains no other mini-api declarations, and constructs the new blocks. Unknown/customized/repeated/misplaced markers are rejected for manual review; applying the same auth release twice is rejected. Existing original/candidate backups, hash concurrency checks, shared release lock, mounted-file hash checks, in-place writes, nginx tests, timeout and rollback behavior remain unchanged. Rollback restores the complete actual pre-upgrade file, including the browse-only blocks.
+
+Validation before release:
+
+```sh
+python3 -m unittest discover -s tests -p test_mini_api_gateway.py
+uv run ruff check deploy/mini-api-gateway/release.py tests/test_mini_api_gateway.py
+python3 deploy/mini-api-gateway/release.py plan <private-live-config-copy> <private-candidate>
+```
+
+Review that the candidate differs only inside the two existing marked blocks. Backend WeChat login, its migration and credentials must be deployed and validated separately by the main release owner before treating login as available. This directory does not provision credentials or execute migrations.
+
+### Trusted proxy source and login limits
+
+The current nginx fragment sends `$proxy_add_x_forwarded_for`; the backend WeChat limiter consumes `request.client.host`. The checked-in Uvicorn Docker command has no explicit `--forwarded-allow-ips`, so do not assume the container gateway's forwarded client address is trusted. Without a correct policy all clients can share a proxy IP's login quota. Never use `--forwarded-allow-ips '*'` and never directly parse arbitrary request `X-Forwarded-For` in application code.
+
+Before auth deployment, identify the exact gateway peer address(es) seen by Uvicorn and the exact upstream reverse-proxy address(es) in this deployment. Configure Uvicorn to trust only those actual proxy IPs; where an outer edge exists, it must replace/normalize untrusted incoming XFF using its socket peer, and each trusted hop must append its verified peer. Validate a normal request and a forged-XFF request yield the same true client identity. If only the gateway IP is trusted while an outer edge remains the rightmost untrusted hop, users will still share that edge's IP quota. The precise IP list and edge behavior must be verified live by the release owner; none are guessed or hardcoded by this local draft. Domain allowlisting alone does not establish trusted proxy provenance.

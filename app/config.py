@@ -7,7 +7,7 @@
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     # --- Google OAuth ---
     google_client_id: str = ""
     google_certs_url: str = "https://www.googleapis.com/oauth2/v1/certs"
+
+    # 小程序登录（与网站扫码登录不同；AppSecret 只保存在服务端）
+    wechat_app_id: str = ""
+    wechat_app_secret: SecretStr = SecretStr("")
+
+    @field_validator("wechat_app_id")
+    @classmethod
+    def validate_wechat_app_id(cls, value: str) -> str:
+        import re
+
+        if value and not re.fullmatch(r"wx[0-9a-fA-F]{16}", value):
+            raise ValueError("WeChat AppID must start with wx and contain 16 hexadecimal characters")
+        return value
 
     @field_validator("google_certs_url")
     @classmethod

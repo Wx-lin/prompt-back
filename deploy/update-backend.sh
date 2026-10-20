@@ -7,7 +7,10 @@ migrate=${3:-false}
 admin_hash=${4:-}
 auto_migration=${5:-}
 reviewed_migration=${6:-}
-[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 ]]
+[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 ]] || {
+    echo 'Unknown reviewed migration; stopped' >&2
+    exit 1
+}
 [[ -z "$admin_hash" || "$admin_hash" =~ ^[a-f0-9]{64}$ ]]
 [[ -z "$auto_migration" || "$auto_migration" == e7a13c9b40d2 ]]
 [[ "$migrate" == true || "$migrate" == false ]]
@@ -157,6 +160,7 @@ if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
         f8b24d0c51e3) reviewed_parent=e7a13c9b40d2 ;;
         a3e6b18d4092) reviewed_parent=9c35e1a62f4 ;;
         c74d219e8a60) reviewed_parent=a3e6b18d4092 ;;
+        d91a72f4b308) reviewed_parent=c74d219e8a60 ;;
         *) echo "Unknown reviewed migration; stopped"; exit 1 ;;
     esac
     [[ "$heads" == "$reviewed_migration" && ( "$current" == "$reviewed_parent" || "$current" == "$heads" ) ]] || {

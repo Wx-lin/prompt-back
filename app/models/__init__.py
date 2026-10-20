@@ -14,6 +14,7 @@ from app.models.prompt import Prompt, PromptImage
 from app.models.search_log import SearchLog
 from app.models.submission_asset import SubmissionAsset
 from app.models.user import User
+from app.models.wechat_identity import WeChatIdentity
 
 __all__ = [
     "CategoryLegacyMembership",
@@ -27,6 +28,7 @@ __all__ = [
     "PromptImage",
     "SearchLog",
     "User",
+    "WeChatIdentity",
     "SubmissionAsset",
     "UserCollect",
     "UserLike",

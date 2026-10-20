@@ -1,0 +1,22 @@
+"""App-scoped mini-program identities, independent from website login identities."""
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, Uuid, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.database import Base
+
+
+class WeChatIdentity(Base):
+    __tablename__ = "wechat_identities"
+    __table_args__ = (UniqueConstraint("app_id", "openid", name="uq_wechat_identity_app_openid"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    app_id: Mapped[str] = mapped_column(String(18), nullable=False)
+    openid: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -5,7 +5,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class SendCodeRequest(BaseModel):
@@ -27,8 +27,16 @@ class GoogleLoginRequest(BaseModel):
     id_token: str
 
 
+class WeChatLoginRequest(BaseModel):
+    """仅接收 wx.login 的临时 code，身份与 AppID 均由服务端确认。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    code: str = Field(min_length=1, max_length=512, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class TokenResponse(BaseModel):
-    """登录成功后的响应，前端存入 localStorage。"""
+    """登录成功后的令牌响应，由网站或小程序客户端按各自会话策略保存。"""
 
     access_token: str
     token_type: str = "bearer"

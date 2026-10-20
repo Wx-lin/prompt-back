@@ -112,6 +112,8 @@ sudo() {
         ("5c8e9f0a12b3", "ffffffffffff", "e7a13c9b40d2", 1),
         ("5c8e9f0a12b3", "e7a13c9b40d2", "", 1),
         ("e7a13c9b40d2", "f8b24d0c51e3", "e7a13c9b40d2", 1),
+        ("c74d219e8a60", "d91a72f4b308", "e7a13c9b40d2", 1),
+        ("5c8e9f0a12b3", "d91a72f4b308", "e7a13c9b40d2", 1),
     ],
 )
 def test_automatic_migration_only_for_reviewed_parent_head(tmp_path, current, head, allowed, expected):
@@ -295,6 +297,13 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
         ("true", "a3e6b18d4092", "a3e6b18d4092", 0, False, "a3e6b18d4092"),
         ("false", "9c35e1a62f4", "a3e6b18d4092", 1, False, "a3e6b18d4092"),
         ("true", "e7a13c9b40d2", "a3e6b18d4092", 1, False, "a3e6b18d4092"),
+        ("true", "c74d219e8a60", "d91a72f4b308", 0, True, "d91a72f4b308"),
+        ("true", "d91a72f4b308", "d91a72f4b308", 0, False, "d91a72f4b308"),
+        ("true", "a3e6b18d4092", "d91a72f4b308", 1, False, "d91a72f4b308"),
+        ("true", "ffffffffffff", "d91a72f4b308", 1, False, "d91a72f4b308"),
+        ("true", "c74d219e8a60", "ffffffffffff", 1, False, "d91a72f4b308"),
+        ("true", "c74d219e8a60", "c74d219e8a60", 1, False, "d91a72f4b308"),
+        ("false", "c74d219e8a60", "d91a72f4b308", 1, False, "d91a72f4b308"),
     ],
 )
 def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded, reviewed):
@@ -340,6 +349,9 @@ sudo() {
         ("push", "f8b24d0c51e3", "false:"),
         ("push", "a3e6b18d4092", "false:"),
         ("push", "c74d219e8a60", "false:"),
+        ("push", "d91a72f4b308", "false:"),
+        ("pull_request", "d91a72f4b308", "false:"),
+        ("workflow_dispatch", "d91a72f4b308", "true:d91a72f4b308"),
         ("workflow_dispatch", "c74d219e8a60", "true:c74d219e8a60"),
         ("workflow_dispatch", "a3e6b18d4092", "true:a3e6b18d4092"),
         ("workflow_dispatch", "none", "false:"),
@@ -364,6 +376,37 @@ def test_workflow_only_explicit_dispatch_enables_migration(event, target, expect
         check=True,
     )
     assert result.stdout == expected
+
+
+def test_wechat_reviewed_migration_is_available_in_manual_workflow_choices():
+    source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    choices = source.split("        options:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "          - d91a72f4b308\n" in choices + "\n"
+
+
+@pytest.mark.parametrize("reviewed,expected", [("d91a72f4b308", 0), ("ffffffffffff", 1)])
+def test_wechat_reviewed_argument_checked_before_server_access(reviewed, expected):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / "deploy/update-backend.sh").read_text()
+    validation = source[: source.index("cd /opt/aigc-prompt")]
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            validation,
+            "fixture",
+            "backend-20261020-000000",
+            "0" * 64,
+            "true",
+            "",
+            "e7a13c9b40d2",
+            reviewed,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == expected, result.stderr + result.stdout
 
 
 def test_revision_backup_reads_database_when_old_image_cannot_resolve_new_revision(tmp_path):

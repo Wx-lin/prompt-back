@@ -20,6 +20,9 @@ HTTP_END = "# END REVIEWED MINI API HTTP\n"
 SERVER_BEGIN = "\n# BEGIN REVIEWED MINI API SERVER\n"
 SERVER_END = "# END REVIEWED MINI API SERVER\n"
 
+BROWSE_HTTP_SHA256 = "433bd3efc3f037adf42942f2dbd42cfa6691e68517c6aea9347088ad38d3d949"
+BROWSE_SERVER_SHA256 = "6045aca9faa99451ec5500f03dfb6d353a533e475be0e28b02857f011882d452"
+
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
@@ -54,7 +57,30 @@ def domain_block(text):
 
 def merge(original):
     if "mini-api" in original or "$mini_api_allowed" in original:
-        raise ValueError("Existing mini-api configuration; manual review required")
+        base = remove(original)
+        http_start = original.index(HTTP_BEGIN) + len(HTTP_BEGIN)
+        server_start = original.index(SERVER_BEGIN) + len(SERVER_BEGIN)
+        previous_http = original[http_start : original.index(HTTP_END)]
+        previous_server = original[server_start : original.index(SERVER_END)]
+        if (
+            digest(previous_http.encode()) != BROWSE_HTTP_SHA256
+            or digest(previous_server.encode()) != BROWSE_SERVER_SHA256
+        ):
+            raise ValueError("Only the reviewed browse-only gateway can be upgraded")
+        _, base_end = domain_block(base)
+        expected = (
+            HTTP_BEGIN
+            + previous_http
+            + HTTP_END
+            + base[:base_end]
+            + SERVER_BEGIN
+            + previous_server
+            + SERVER_END
+            + base[base_end:]
+        )
+        if expected != original:
+            raise ValueError("Existing gateway markers are outside expected scopes")
+        return merge(base)
     _, end = domain_block(original)
     http = HTTP_BEGIN + (BASE / "http.conf").read_text() + HTTP_END
     server = SERVER_BEGIN + (BASE / "server.conf").read_text() + SERVER_END

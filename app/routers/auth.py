@@ -1,12 +1,12 @@
 """
-认证相关路由：邮箱验证码登录、Google 登录、获取当前用户信息。
+认证相关路由：邮箱验证码、Google、小程序微信登录及当前用户信息。
 
 对应 PRD 3.6、后端技术选型.md 3.1 节"用户与认证"接口清单。
 """
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +19,9 @@ from app.schemas.auth import (
     TokenResponse,
     UserOut,
     VerifyCodeRequest,
+    WeChatLoginRequest,
 )
-from app.services import auth_service, email_service
+from app.services import auth_service, email_service, wechat_auth
 from app.utils.deps import get_current_user
 from app.utils.google_auth import (
     GoogleTokenInvalidError,
@@ -30,6 +31,28 @@ from app.utils.google_auth import (
 from app.utils.jwt import create_access_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+@router.post("/wechat", response_model=TokenResponse)
+async def wechat_login(
+    body: WeChatLoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    redis_client: Redis = Depends(get_redis_client),
+) -> TokenResponse:
+    """小程序 wx.login：服务端换取身份，使用独立账号返回现有 JWT。"""
+    try:
+        wechat_auth.require_configuration()
+        await wechat_auth.enforce_login_rate_limit(
+            redis_client, request.client.host if request.client else "unknown"
+        )
+        identity = await wechat_auth.exchange_code(body.code)
+        user = await wechat_auth.get_or_create_user(db, identity)
+    except wechat_auth.WeChatAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    response.headers["Cache-Control"] = "no-store"
+    return TokenResponse(access_token=create_access_token(user.id))
 
 
 @router.post("/send-code", status_code=204)
