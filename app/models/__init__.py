@@ -11,6 +11,7 @@ from app.models.crawl_schedule import CrawlSchedule
 from app.models.crawl_task import CrawlTask
 from app.models.interaction import UserCollect, UserLike
 from app.models.prompt import Prompt, PromptImage
+from app.models.prompt_analysis import PromptAnalysis, PromptAnalysisAsset, PromptAnalysisAttempt
 from app.models.search_log import SearchLog
 from app.models.submission_asset import SubmissionAsset
 from app.models.user import User
@@ -26,6 +27,9 @@ __all__ = [
     "CrawlSchedule",
     "Prompt",
     "PromptImage",
+    "PromptAnalysis",
+    "PromptAnalysisAsset",
+    "PromptAnalysisAttempt",
     "SearchLog",
     "User",
     "WeChatIdentity",

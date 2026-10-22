@@ -24,10 +24,13 @@ BROWSE_HTTP_SHA256 = "433bd3efc3f037adf42942f2dbd42cfa6691e68517c6aea9347088ad38
 BROWSE_SERVER_SHA256 = "6045aca9faa99451ec5500f03dfb6d353a533e475be0e28b02857f011882d452"
 AUTH_HTTP_SHA256 = "cec0167efdc846f22b080f3dc943f67379485f8c2605de66ba3c661ddf6ade3c"
 AUTH_SERVER_SHA256 = "6045aca9faa99451ec5500f03dfb6d353a533e475be0e28b02857f011882d452"
+PROFILE_HTTP_SHA256 = "c84e6888566667714acd86ca702a8ca9a5c7842d2fa46cd5d2c40eaefac26b97"
+PROFILE_SERVER_SHA256 = "0fe8a6f52e052eb4e6e688471f9b76161ae0d84ecdee81033f494e56b213bbab"
 REVIEWED_PREVIOUS_FRAGMENTS = frozenset(
     {
         (BROWSE_HTTP_SHA256, BROWSE_SERVER_SHA256),
         (AUTH_HTTP_SHA256, AUTH_SERVER_SHA256),
+        (PROFILE_HTTP_SHA256, PROFILE_SERVER_SHA256),
     }
 )
 
@@ -72,7 +75,7 @@ def merge(original):
         previous_server = original[server_start : original.index(SERVER_END)]
         previous_hashes = (digest(previous_http.encode()), digest(previous_server.encode()))
         if previous_hashes not in REVIEWED_PREVIOUS_FRAGMENTS:
-            raise ValueError("Only the reviewed browse-only or auth gateway can be upgraded")
+            raise ValueError("Only a reviewed browse, auth or profile gateway can be upgraded")
         _, base_end = domain_block(base)
         expected = (
             HTTP_BEGIN

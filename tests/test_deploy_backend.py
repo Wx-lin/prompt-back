@@ -114,6 +114,8 @@ sudo() {
         ("e7a13c9b40d2", "f8b24d0c51e3", "e7a13c9b40d2", 1),
         ("c74d219e8a60", "d91a72f4b308", "e7a13c9b40d2", 1),
         ("5c8e9f0a12b3", "d91a72f4b308", "e7a13c9b40d2", 1),
+        ("d91a72f4b308", "e04b75ad6312", "e7a13c9b40d2", 1),
+        ("c74d219e8a60", "e04b75ad6312", "e7a13c9b40d2", 1),
     ],
 )
 def test_automatic_migration_only_for_reviewed_parent_head(tmp_path, current, head, allowed, expected):
@@ -304,6 +306,14 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
         ("true", "c74d219e8a60", "ffffffffffff", 1, False, "d91a72f4b308"),
         ("true", "c74d219e8a60", "c74d219e8a60", 1, False, "d91a72f4b308"),
         ("false", "c74d219e8a60", "d91a72f4b308", 1, False, "d91a72f4b308"),
+        ("true", "d91a72f4b308", "e04b75ad6312", 0, True, "e04b75ad6312"),
+        ("true", "e04b75ad6312", "e04b75ad6312", 0, False, "e04b75ad6312"),
+        ("true", "c74d219e8a60", "e04b75ad6312", 1, False, "e04b75ad6312"),
+        ("true", "ffffffffffff", "e04b75ad6312", 1, False, "e04b75ad6312"),
+        ("true", "d91a72f4b308", "ffffffffffff", 1, False, "e04b75ad6312"),
+        ("true", "d91a72f4b308", "d91a72f4b308", 1, False, "e04b75ad6312"),
+        ("false", "d91a72f4b308", "e04b75ad6312", 1, False, "e04b75ad6312"),
+        ("true", "d91a72f4b308", "e04b75ad6312", 1, False, "d91a72f4b308"),
     ],
 )
 def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded, reviewed):
@@ -350,7 +360,10 @@ sudo() {
         ("push", "a3e6b18d4092", "false:"),
         ("push", "c74d219e8a60", "false:"),
         ("push", "d91a72f4b308", "false:"),
+        ("push", "e04b75ad6312", "false:"),
         ("pull_request", "d91a72f4b308", "false:"),
+        ("pull_request", "e04b75ad6312", "false:"),
+        ("workflow_dispatch", "e04b75ad6312", "true:e04b75ad6312"),
         ("workflow_dispatch", "d91a72f4b308", "true:d91a72f4b308"),
         ("workflow_dispatch", "c74d219e8a60", "true:c74d219e8a60"),
         ("workflow_dispatch", "a3e6b18d4092", "true:a3e6b18d4092"),
@@ -384,7 +397,13 @@ def test_wechat_reviewed_migration_is_available_in_manual_workflow_choices():
     assert "          - d91a72f4b308\n" in choices + "\n"
 
 
-@pytest.mark.parametrize("reviewed,expected", [("d91a72f4b308", 0), ("ffffffffffff", 1)])
+def test_image_prompt_reviewed_migration_is_available_in_manual_workflow_choices():
+    source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    choices = source.split("        options:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "          - e04b75ad6312\n" in choices + "\n"
+
+
+@pytest.mark.parametrize("reviewed,expected", [("d91a72f4b308", 0), ("e04b75ad6312", 0), ("ffffffffffff", 1)])
 def test_wechat_reviewed_argument_checked_before_server_access(reviewed, expected):
     import subprocess
 

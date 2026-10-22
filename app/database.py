@@ -16,11 +16,13 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# echo=True 会打印所有执行的 SQL，开发环境下便于调试，生产环境应关闭
+# Private prompts must not leak through SQL parameter logging, including locally.
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.app_env == "development",
+    echo=False,
     pool_pre_ping=True,  # 每次取连接前先探活，避免连接池里拿到已失效的连接
+    pool_size=5,
+    max_overflow=0,
 )
 
 AsyncSessionLocal = async_sessionmaker(

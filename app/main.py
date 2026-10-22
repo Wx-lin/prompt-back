@@ -24,6 +24,7 @@ from app.routers import (
     categories,
     crawl_operations,
     model_catalog,
+    prompt_analyses,
     prompts,
     search,
     seo,
@@ -32,6 +33,7 @@ from app.routers import (
     users,
 )
 from app.scheduler import create_scheduler
+from app.utils.prompt_analysis_http import PromptAnalysisBoundary
 from app.utils.submission_body_limit import SubmissionBodyLimit
 
 settings = get_settings()
@@ -62,6 +64,7 @@ app.add_middleware(
 )
 
 app.add_middleware(SubmissionBodyLimit)
+app.add_middleware(PromptAnalysisBoundary)
 
 
 @app.middleware("http")
@@ -73,6 +76,7 @@ async def prevent_seo_cache(request, call_next):
 
 
 app.include_router(submissions.router)
+app.include_router(prompt_analyses.router)
 app.include_router(admin_submissions.router)
 app.include_router(prompts.router)
 app.include_router(auth.router)

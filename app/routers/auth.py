@@ -52,7 +52,29 @@ async def wechat_login(
     except wechat_auth.WeChatAuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
     response.headers["Cache-Control"] = "no-store"
-    return TokenResponse(access_token=create_access_token(user.id))
+    return TokenResponse(access_token=create_access_token(user.id, client_id="gallery_mini"))
+
+
+@router.post("/wechat/image-to-prompt", response_model=TokenResponse)
+async def image_to_prompt_wechat_login(
+    body: WeChatLoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    redis_client: Redis = Depends(get_redis_client),
+) -> TokenResponse:
+    """图片转提示词独立小程序：只使用服务端配置的 AppID 换取身份。"""
+    try:
+        wechat_auth.require_image_to_prompt_configuration()
+        await wechat_auth.enforce_login_rate_limit(
+            redis_client, request.client.host if request.client else "unknown"
+        )
+        identity = await wechat_auth.exchange_image_to_prompt_code(body.code)
+        user = await wechat_auth.get_or_create_user(db, identity)
+    except wechat_auth.WeChatAuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from None
+    response.headers["Cache-Control"] = "no-store"
+    return TokenResponse(access_token=create_access_token(user.id, client_id="image_to_prompt_mini"))
 
 
 @router.post("/send-code", status_code=204)

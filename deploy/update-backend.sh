@@ -7,7 +7,7 @@ migrate=${3:-false}
 admin_hash=${4:-}
 auto_migration=${5:-}
 reviewed_migration=${6:-}
-[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 ]] || {
+[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 || "$reviewed_migration" == e04b75ad6312 ]] || {
     echo 'Unknown reviewed migration; stopped' >&2
     exit 1
 }
@@ -51,10 +51,45 @@ success=false
 admin_switched=false
 old_id=
 old_reference=
+prompt_worker_was_running=false
+prompt_worker_resume_attempted=false
+pause_prompt_worker() {
+    local services container running
+    services=$(sudo -n docker compose --profile image-prompt config --services) || return 1
+    grep -Fxq prompt-analysis-worker <<< "$services" || return 0
+    container=$(sudo -n docker compose --profile image-prompt ps -a -q prompt-analysis-worker) || return 1
+    [[ -n "$container" ]] || return 0
+    [[ "$container" != *$'\n'* ]] || return 1
+    running=$(sudo -n docker inspect --format '{{.State.Running}}' "$container") || return 1
+    [[ "$running" != false ]] || return 0
+    [[ "$running" == true ]] || return 1
+    # Record the original state before stopping, so even a failed stop can recover it.
+    prompt_worker_was_running=true
+    sudo -n docker compose --profile image-prompt stop --timeout 130 prompt-analysis-worker || return 1
+    running=$(sudo -n docker inspect --format '{{.State.Running}}' "$container") || return 1
+    [[ "$running" == false ]] || { echo 'Image prompt worker did not stop; deployment stopped' >&2; return 1; }
+}
+resume_prompt_worker() {
+    local expected_image=$1 container running image
+    [[ -n "$expected_image" ]] || return 1
+    prompt_worker_resume_attempted=true
+    sudo -n docker compose --profile image-prompt up -d --no-deps --no-build prompt-analysis-worker || return 1
+    container=$(sudo -n docker compose --profile image-prompt ps -a -q prompt-analysis-worker) || return 1
+    [[ -n "$container" && "$container" != *$'\n'* ]] || return 1
+    running=$(sudo -n docker inspect --format '{{.State.Running}}' "$container") || return 1
+    image=$(sudo -n docker inspect --format '{{.Image}}' "$container") || return 1
+    [[ "$running" == true && "$image" == "$expected_image" ]] || {
+        echo 'Image prompt worker is not running the expected API image' >&2
+        return 1
+    }
+}
 finish() {
     code=$?
     trap - EXIT
     set +e
+    if [[ "$success" != true && "${prompt_worker_resume_attempted:-false}" == true ]]; then
+        sudo -n docker compose --profile image-prompt stop --timeout 130 prompt-analysis-worker || code=1
+    fi
     if [[ "$success" != true && -n "$old_id" ]]; then
         sudo -n docker tag "$old_id" "$old_reference" || code=1
     fi
@@ -82,6 +117,9 @@ finish() {
         sudo -n docker compose -f compose.yml -f "$backup/rollback.yml" up -d --no-deps --no-build api
         sudo -n docker compose exec -T gateway nginx -s reload
     fi
+    if [[ "$success" != true && "${prompt_worker_was_running:-false}" == true ]]; then
+        resume_prompt_worker "$old_id" || code=1
+    fi
     if [[ "$timer_was_active" == true ]]; then
         sudo -n systemctl start aigc-crawl.timer || code=1
     fi
@@ -103,6 +141,7 @@ old_reference=$(sudo -n docker compose config --format json | python3 -c 'import
 old_id=$(sudo -n docker inspect aigc-prompt-api-1 --format '{{.Image}}')
 sudo -n docker tag "$old_id" "aigc-prompt-app:rollback-$release"
 printf 'services:\n  api:\n    image: aigc-prompt-app:rollback-%s\n  worker:\n    image: aigc-prompt-app:rollback-%s\n' "$release" "$release" > "$backup/rollback.yml"
+pause_prompt_worker
 cp compose.yml "$backup/compose.before.yml"
 cp -a backend "$backup/backend.before"
 sudo -n docker compose exec -T postgres pg_dump -U aigc -d aigc_prompt -Fc > "$backup/database.dump"
@@ -161,6 +200,7 @@ if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
         a3e6b18d4092) reviewed_parent=9c35e1a62f4 ;;
         c74d219e8a60) reviewed_parent=a3e6b18d4092 ;;
         d91a72f4b308) reviewed_parent=c74d219e8a60 ;;
+        e04b75ad6312) reviewed_parent=d91a72f4b308 ;;
         *) echo "Unknown reviewed migration; stopped"; exit 1 ;;
     esac
     [[ "$heads" == "$reviewed_migration" && ( "$current" == "$reviewed_parent" || "$current" == "$heads" ) ]] || {
@@ -230,6 +270,10 @@ for attempt in {1..20}; do
     sleep 2
 done
 [[ "$healthy" == true ]]
+if [[ "$prompt_worker_was_running" == true ]]; then
+    new_api_image=$(sudo -n docker inspect aigc-prompt-api-1 --format '{{.Image}}')
+    resume_prompt_worker "$new_api_image"
+fi
 success=true
 sudo -n docker inspect aigc-prompt-api-1 --format '{{.Image}}' > "$backup/image.after"
 echo "Backend deployed. Backup: /opt/aigc-prompt/$backup"

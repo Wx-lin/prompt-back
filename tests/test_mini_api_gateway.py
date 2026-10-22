@@ -200,7 +200,7 @@ server { listen 8443; server_name 62.234.69.93; }
         profile = server.split(profile_marker, 1)[1].split("\n}\n", 1)[0]
         browse = server.split(browse_marker, 1)[1].split("\n}\n", 1)[0]
         self.assertEqual(profile.replace("client_max_body_size 3m;", "client_max_body_size 128k;"), browse)
-        self.assertEqual(server.count("client_max_body_size 128k;"), 1)
+        self.assertEqual(server.count("client_max_body_size 128k;"), 3)
         self.assertEqual(server.count("client_max_body_size 3m;"), 1)
         for directive in [
             "if ($mini_api_allowed = 0) { return 404; }",
@@ -208,7 +208,7 @@ server { listen 8443; server_name 62.234.69.93; }
             "proxy_set_header Authorization $http_authorization;",
             'add_header Cache-Control "no-store" always;',
         ]:
-            self.assertEqual(server.count(directive), 2)
+            self.assertEqual(server.count(directive), 5)
 
     def test_profile_release_and_rollback_restore_actual_auth_config_and_inode(self):
         _, previous = deployed_config()

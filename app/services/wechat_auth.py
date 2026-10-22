@@ -51,6 +51,15 @@ def require_configuration() -> None:
         raise WeChatAuthError(503, "微信登录暂未配置，请稍后再试")
 
 
+def require_image_to_prompt_configuration() -> None:
+    settings = get_settings()
+    if (
+        not settings.wechat_image_to_prompt_app_id
+        or not settings.wechat_image_to_prompt_app_secret.get_secret_value()
+    ):
+        raise WeChatAuthError(503, "微信登录暂未配置，请稍后再试")
+
+
 async def enforce_login_rate_limit(redis: Redis, client_host: str) -> None:
     """Atomic per-peer limit; do not trust caller-supplied forwarding headers."""
     digest = hmac.new(
@@ -92,10 +101,27 @@ async def _request_code_session(params: dict[str, str]) -> object:
 async def exchange_code(code: str) -> VerifiedWeChatIdentity:
     require_configuration()
     settings = get_settings()
+    return await _exchange_code_for_app(
+        code, app_id=settings.wechat_app_id, app_secret=settings.wechat_app_secret.get_secret_value()
+    )
+
+
+async def exchange_image_to_prompt_code(code: str) -> VerifiedWeChatIdentity:
+    """Exchange only against the independent image-to-prompt mini-program."""
+    require_image_to_prompt_configuration()
+    settings = get_settings()
+    return await _exchange_code_for_app(
+        code,
+        app_id=settings.wechat_image_to_prompt_app_id,
+        app_secret=settings.wechat_image_to_prompt_app_secret.get_secret_value(),
+    )
+
+
+async def _exchange_code_for_app(code: str, *, app_id: str, app_secret: str) -> VerifiedWeChatIdentity:
     payload = await _request_code_session(
         {
-            "appid": settings.wechat_app_id,
-            "secret": settings.wechat_app_secret.get_secret_value(),
+            "appid": app_id,
+            "secret": app_secret,
             "js_code": code,
             "grant_type": "authorization_code",
         }
@@ -112,7 +138,7 @@ async def exchange_code(code: str) -> VerifiedWeChatIdentity:
     openid = payload.get("openid")
     if error or not isinstance(openid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", openid):
         raise WeChatAuthError(503, "微信登录暂不可用，请稍后再试")
-    return VerifiedWeChatIdentity(settings.wechat_app_id, openid)
+    return VerifiedWeChatIdentity(app_id, openid)
 
 
 async def _find_user(db: AsyncSession, identity: VerifiedWeChatIdentity) -> User | None:

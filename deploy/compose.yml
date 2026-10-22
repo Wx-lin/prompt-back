@@ -58,6 +58,19 @@ services:
     mem_limit: 1100m
     cpus: 1.5
     command: [python, -m, scripts.scheduled_crawl, --keyword, 'AI绘画提示词', --limit, '20']
+  prompt-analysis-worker:
+    <<: *app
+    profiles: [image-prompt]
+    restart: unless-stopped
+    stop_grace_period: 130s
+    mem_limit: 384m
+    cpus: 1
+    # Override the crawler/Xvfb entrypoint. Same source/image, dedicated process.
+    entrypoint: [python, -m, app.workers.prompt_analysis]
+    command: []
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
   frontend:
     build:
       context: frontend

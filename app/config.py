@@ -6,8 +6,9 @@
 """
 
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,8 +35,10 @@ class Settings(BaseSettings):
     # 小程序登录（与网站扫码登录不同；AppSecret 只保存在服务端）
     wechat_app_id: str = ""
     wechat_app_secret: SecretStr = SecretStr("")
+    wechat_image_to_prompt_app_id: str = ""
+    wechat_image_to_prompt_app_secret: SecretStr = SecretStr("")
 
-    @field_validator("wechat_app_id")
+    @field_validator("wechat_app_id", "wechat_image_to_prompt_app_id")
     @classmethod
     def validate_wechat_app_id(cls, value: str) -> str:
         import re
@@ -95,6 +98,39 @@ class Settings(BaseSettings):
     # 使用 qwen3.7-plus 多模态模型，通过 OpenAI 兼容接口调用，详见
     # app/services/content_review_service.py 和 docs/aigc-prompt-内容审核方案.md。
     dashscope_api_key: str = ""
+
+    # Private image-to-prompt feature. No fallback to the gallery moderation key.
+    prompt_analysis_enabled: bool = False
+    prompt_analysis_worker_enabled: bool = False
+    prompt_analysis_prompt_version: str = "v1"
+    prompt_vision_provider: Literal["openai-compatible", "dashscope"] = "openai-compatible"
+    prompt_vision_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    prompt_vision_api_key: SecretStr = SecretStr("")
+    prompt_vision_model: str = ""
+    prompt_vision_max_tokens: int = Field(default=4096, ge=256, le=16384)
+    prompt_analysis_daily_limit: int = Field(default=5, ge=1, le=10000)
+    prompt_analysis_global_daily_limit: int = Field(default=100, ge=1, le=1000000)
+    prompt_analysis_queue_limit: int = Field(default=10, ge=1, le=10000)
+    prompt_analysis_upload_hourly_limit: int = Field(default=30, ge=1, le=10000)
+    prompt_analysis_global_upload_daily_limit: int = Field(default=300, ge=1, le=1000000)
+    prompt_analysis_poll_seconds: float = Field(default=1, ge=0.1, le=60)
+    prompt_analysis_lease_seconds: int = Field(default=90, ge=10, le=600)
+    prompt_analysis_heartbeat_seconds: int = Field(default=15, ge=1, le=60)
+    prompt_analysis_call_timeout: float = Field(default=60, ge=1, le=120)
+    prompt_analysis_execution_timeout: int = Field(default=120, ge=10, le=600)
+    prompt_analysis_queue_ttl_seconds: int = Field(default=300, ge=10, le=3600)
+
+    @field_validator("prompt_vision_base_url")
+    @classmethod
+    def validate_prompt_vision_url(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("Vision API URL must use HTTPS and contain no embedded credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("Vision API URL must not contain query parameters or fragments")
+        return value.rstrip("/")
 
 
 @lru_cache
