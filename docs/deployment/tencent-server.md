@@ -125,3 +125,19 @@ python3 scripts/deploy_backend.py
 本地验收：真实隔离 PostgreSQL 全套 156 个测试通过，含升级/降级兼容与并发保存；后台 lint/build 通过。浏览器真实数据库回归验证后台拖拽保存、首页排序分页、过滤、热门独立及保存冲突，登录/COS/Redis 用测试替身，不代表线上账号和 COS 完整验收。
 
 本次定向迁移可通过 workflow_dispatch 参数 `reviewed_migration=f8b24d0c51e3` 明确执行，只接受 e7→f8 或已在 f8，其他父版本/head 拒绝；普通 push 自动迁移门禁不变。生产 JWT 算法在发布前只读核对 HS256，不读取或打印密钥。依赖审计的既有 python-jose/ecdsa 无修复版本告警已按固定 HS256 调用路径审阅，不涉及 ECDSA/非对称解码，不能将该审计称为全部无告警。
+
+## 2026-10-19 Chat2DB 线上库连接故障及本机自动恢复
+
+实际根因：Chat2DB 的线上数据源指向 `127.0.0.1:15432/aigc_prompt`，该端口原先依赖临时 SSH 转发。隧道消失后，客户端依然显示“关闭连接”，但列库、执行 SQL 均失败。原始日志为 `Connection to 127.0.0.1:15432 refused`；UI 仅显示 `Unknown Error / connection.error`，不能据此判断数据库宕机，也不能把客户端选中状态当作连接成功。
+
+本机恢复服务：`~/Library/LaunchAgents/com.aigc-prompt.database-tunnel.plist`，脚本目录 `~/Library/Application Support/AIGC Database Tunnel/`。用户登录后运行、每30秒检查 SSH master、本机15432监听及远端 Postgres 容器当前地址；掉线后重建连接，容器地址变化时重新建立转发。SSH心跳30秒、连续3次失败断开，保留严格主机校验。仅监听本机127.0.0.1，不暴露公网数据库；不修改生产数据库、账号或安全组。认证复用已授权的 macOS钥匙串条目，不将密码写入脚本或日志。钥匙串锁定、网络离线或凭据失效时仍需恢复相应条件，不能承诺绝不断线。
+
+排查顺序：
+1. `pg_isready -h 127.0.0.1 -p 15432`，先确认隧道；失败时不要随意改数据源密码。
+2. `launchctl print gui/$(id -u)/com.aigc-prompt.database-tunnel` 查看最近退出码和运行状态；该任务为定时短任务，空闲时not running正常。
+3. 检查上述脚本目录的`service.log`，不输出钥匙串密码、数据库密码或完整环境。
+4. 隧道健康后，在Chat2DB“编辑数据源”底部测试连接，再验证展开public表列表和只读查询。不要只根据TCP端口开放声称客户端已恢复。
+
+手动触发恢复：`launchctl kickstart gui/$(id -u)/com.aigc-prompt.database-tunnel`。关闭自动恢复：`launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.aigc-prompt.database-tunnel.plist`，再关闭该服务state.json所指的专用SSH master；不要关闭其他工作会话。
+
+已验证：修复前15432无监听；恢复后pg_isready成功，Chat2DB显示“测试连接成功”，public下18张表可展开、users已有4行可读取。执行专用隧道断线模拟后检查自动恢复，不影响生产API或其他SSH会话。
