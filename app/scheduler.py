@@ -50,4 +50,7 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(_refresh_trending_job, "interval", hours=1, id="refresh_trending")
     scheduler.add_job(_submission_cleanup_job, "interval", minutes=30, id="submission_cleanup")
     scheduler.add_job(_traffic_cleanup_job, "interval", hours=24, id="traffic_cleanup")
+    from app.services.seo_sync_service import register_seo_job
+
+    register_seo_job(scheduler)
     return scheduler

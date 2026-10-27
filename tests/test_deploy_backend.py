@@ -306,6 +306,10 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
         ("true", "c74d219e8a60", "ffffffffffff", 1, False, "d91a72f4b308"),
         ("true", "c74d219e8a60", "c74d219e8a60", 1, False, "d91a72f4b308"),
         ("false", "c74d219e8a60", "d91a72f4b308", 1, False, "d91a72f4b308"),
+        ("true", "e04b75ad6312", "b6f20a93d812", 0, True, "b6f20a93d812"),
+        ("true", "b6f20a93d812", "b6f20a93d812", 0, False, "b6f20a93d812"),
+        ("true", "d91a72f4b308", "b6f20a93d812", 1, False, "b6f20a93d812"),
+        ("false", "e04b75ad6312", "b6f20a93d812", 1, False, "b6f20a93d812"),
         ("true", "d91a72f4b308", "e04b75ad6312", 0, True, "e04b75ad6312"),
         ("true", "e04b75ad6312", "e04b75ad6312", 0, False, "e04b75ad6312"),
         ("true", "c74d219e8a60", "e04b75ad6312", 1, False, "e04b75ad6312"),
@@ -360,6 +364,9 @@ sudo() {
         ("push", "a3e6b18d4092", "false:"),
         ("push", "c74d219e8a60", "false:"),
         ("push", "d91a72f4b308", "false:"),
+        ("push", "b6f20a93d812", "false:"),
+        ("pull_request", "b6f20a93d812", "false:"),
+        ("workflow_dispatch", "b6f20a93d812", "true:b6f20a93d812"),
         ("push", "e04b75ad6312", "false:"),
         ("pull_request", "d91a72f4b308", "false:"),
         ("pull_request", "e04b75ad6312", "false:"),
@@ -403,7 +410,10 @@ def test_image_prompt_reviewed_migration_is_available_in_manual_workflow_choices
     assert "          - e04b75ad6312\n" in choices + "\n"
 
 
-@pytest.mark.parametrize("reviewed,expected", [("d91a72f4b308", 0), ("e04b75ad6312", 0), ("ffffffffffff", 1)])
+@pytest.mark.parametrize(
+    "reviewed,expected",
+    [("d91a72f4b308", 0), ("e04b75ad6312", 0), ("b6f20a93d812", 0), ("ffffffffffff", 1)],
+)
 def test_wechat_reviewed_argument_checked_before_server_access(reviewed, expected):
     import subprocess
 
@@ -449,3 +459,104 @@ sudo() {
     )
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "revision.before").read_text() == "9c35e1a62f4\n"
+
+
+def test_seo_reviewed_migration_is_available_in_manual_workflow_choices():
+    source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    choices = source.split("        options:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "          - b6f20a93d812\n" in choices + "\n"
+
+
+def test_scheduler_registers_google_sync(monkeypatch):
+    from app import scheduler
+    from app.services import seo_sync_service
+
+    registered = []
+    monkeypatch.setattr(seo_sync_service, "register_seo_job", registered.append)
+    result = scheduler.create_scheduler()
+    assert registered == [result]
+
+
+def test_external_google_workflow_security_contract():
+    source = (SCRIPT.parents[1] / ".github/workflows/seo-sync.yml").read_text()
+    for required in ["cron: '0 14 * * *'", "github.ref == 'refs/heads/main'", "group: seo-sync",
+                     "contents: read", "StrictHostKeyChecking=yes", "umask 077", "GSC_SERVICE_ACCOUNT_JSON",
+                     "trap ", "GSC_CREDENTIALS_FILE", "--data-through", "scripts.seo_sync status",
+                     "scripts.seo_sync export", "scripts.seo_sync import", "flock -s",
+                     "Release code differs"]:
+        assert required in source
+    assert "set -x" not in source
+    assert "StrictHostKeyChecking=no" not in source
+    assert "upload-artifact" not in source
+
+
+@pytest.mark.parametrize("matches,expected", [(True, 0), (False, 1)])
+def test_google_sync_release_guard_blocks_old_code_without_consuming_bundle(tmp_path, matches, expected):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / ".github/workflows/seo-sync.yml").read_text()
+    guard = next(line.strip() for line in source.splitlines() if line.strip().startswith("remote_guard="))
+    actual = "a" * 64 if matches else "b" * 64
+    prefix = r'''
+set -Eeuo pipefail
+expected=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+fingerprint_code=unused
+cd() { return 0; }
+flock() { return 0; }
+sudo() { cat > /dev/null; printf '%s\n' "$1"; }
+'''
+    # Mimic docker attaching stdin. The real guard must isolate this probe from the bundle.
+    prefix = prefix.replace('"$1"', f'"{actual}"')
+    result = subprocess.run(
+        ["bash", "-c", prefix + guard + '\neval "$remote_guard; cat"'],
+        cwd=tmp_path,
+        input="private-report-bundle",
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == expected, result.stderr
+    assert result.stdout == ("private-report-bundle" if matches else "")
+    if not matches:
+        assert "Release code differs" in result.stderr
+
+
+@pytest.mark.parametrize("failed_command", ["export", "import"])
+def test_google_sync_failure_notification_preserves_exit_and_uses_guard(tmp_path, failed_command):
+    import subprocess
+
+    source = (SCRIPT.parents[1] / ".github/workflows/seo-sync.yml").read_text()
+    marker = "          record_failure() {"
+    assert marker in source
+    block = source[source.index(marker):]
+    block = "\n".join(line[10:] if line.startswith("          ") else line for line in block.splitlines())
+    prefix = r'''
+set -Eeuo pipefail
+task_dir="$1"
+remote=trusted-host
+remote_guard=verified-source-guard
+attempt_at=2026-10-27T00:00:00+00:00
+ssh_options=(-o BatchMode=yes)
+args=(--data-through 2026-10-20)
+uv() { if [[ "$FAIL_MODE" == export ]]; then return 17; fi; printf '{}'; }
+ssh() {
+  if [[ "$*" == *"scripts.seo_sync failure"* ]]; then
+    printf '%s' "$*" > "$task_dir/failure-call"
+    return 21
+  fi
+  return 17
+}
+timeout() { shift; "$@"; }
+'''
+    import os
+
+    result = subprocess.run(
+        ["bash", "-c", prefix + block, "fixture", str(tmp_path)],
+        env={**os.environ, "FAIL_MODE": failed_command},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 17
+    call = (tmp_path / "failure-call").read_text()
+    assert "verified-source-guard" in call
+    assert "--code upstream_unavailable" in call
+    assert "--attempt-at" in call

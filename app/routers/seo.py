@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.routers.seo_sync import router as sync_router
 from app.schemas.seo import Engine, SeoImport
 from app.services.seo_service import get_report, import_snapshot
 from app.utils.admin_auth import verify_admin_key
@@ -45,3 +46,6 @@ async def import_report(request: Request, response: Response, db: AsyncSession =
     except ValidationError:
         raise HTTPException(422, "导入数据格式不正确，请检查维度、日期、地址及指标") from None
     return await import_snapshot(db, payload)
+
+
+router.include_router(sync_router)

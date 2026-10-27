@@ -1,11 +1,14 @@
 """Persist exports without counting dimension totals more than once."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import select, text
 
 from app.models.seo import SeoSnapshot
+from app.models.seo_sync import SeoApiDay
+from app.services.seo_sync_service import sync_status
 
 
 def metrics(rows):
@@ -61,7 +64,48 @@ async def import_snapshot(db, payload):
 
 
 async def get_report(db, engine, start, end):
-    snapshots = (await db.scalars(select(SeoSnapshot).where(SeoSnapshot.engine == engine))).all()
+    sync = (
+        await sync_status(db)
+        if engine == "google"
+        else {
+            "configured": False,
+            "mode": "server",
+            "trigger_available": False,
+            "status": "not_configured",
+            "last_attempt_at": None,
+            "last_success_at": None,
+            "last_error": None,
+            "data_through": None,
+            "truncated": False,
+        }
+    )
+    automatic = engine == "google" and sync["last_success_at"] is not None
+    if automatic:
+        days = (await db.scalars(select(SeoApiDay).where(SeoApiDay.day >= start, SeoApiDay.day <= end))).all()
+        snapshots = [
+            SimpleNamespace(
+                start_date=day.day,
+                end_date=day.day,
+                dimension=day.dimension,
+                rows=day.rows,
+                updated_at=day.updated_at,
+            )
+            for day in days
+        ]
+    else:
+        snapshots = (
+            await db.scalars(
+                select(SeoSnapshot).where(
+                    SeoSnapshot.engine == engine,
+                    SeoSnapshot.start_date <= end,
+                    SeoSnapshot.end_date >= start,
+                )
+            )
+        ).all()
+    return report_from_snapshots(snapshots, engine, start, end, sync, automatic)
+
+
+def report_from_snapshots(snapshots, engine, start, end, sync, automatic=False):
     coverage, result = {}, {}
     for dimension, output in [("daily", "daily"), ("query", "queries"), ("page", "pages")]:
         selected = [
@@ -112,7 +156,9 @@ async def get_report(db, engine, start, end):
         "engine": engine,
         "start_date": start,
         "end_date": end,
-        "connection_status": "manual_import" if snapshots else "not_connected",
+        "connection_status": "connected" if automatic else "manual_import" if snapshots else "not_connected",
+        "source": "google_api" if automatic else "manual",
+        "sync": sync,
         "source_timezone": "America/Los_Angeles" if engine == "google" else "source_report_timezone",
         "totals": metrics(result["daily"]) if result["daily"] else None,
         **result,

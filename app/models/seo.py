@@ -20,3 +20,7 @@ class SeoSnapshot(Base):
     end_date: Mapped[date] = mapped_column(Date)
     rows: Mapped[list] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# Register the dedicated automatic-source tables alongside the existing SEO model.
+from app.models.seo_sync import SeoApiDay, SeoSyncState  # noqa: E402,F401

@@ -1,0 +1,105 @@
+name: Sync Google search performance
+on:
+  schedule:
+    # 06:00 Pacific in winter, 07:00 in summer; source dates remain Pacific.
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: seo-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --index-url https://pypi.org/simple uv==0.11.17
+      - run: uv sync --locked --no-dev
+      - name: Query Google and atomically import into the matching release
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${GSC_SERVICE_ACCOUNT_JSON:?Configure dedicated read-only GSC credentials}"
+          : "${DEPLOY_HOST:?Configure DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Configure DEPLOY_USER}"
+          : "${DEPLOY_SSH_KEY:?Configure DEPLOY_SSH_KEY}"
+          : "${DEPLOY_KNOWN_HOSTS:?Configure DEPLOY_KNOWN_HOSTS}"
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]]
+          umask 077
+          task_dir=$(mktemp -d)
+          trap 'rm -rf -- "$task_dir"' EXIT
+          printf '%s' "$GSC_SERVICE_ACCOUNT_JSON" > "$task_dir/google.json"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$task_dir/ssh_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$task_dir/known_hosts"
+          chmod 0600 "$task_dir/google.json" "$task_dir/ssh_key" "$task_dir/known_hosts"
+          unset GSC_SERVICE_ACCOUNT_JSON DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS
+          export GSC_CREDENTIALS_FILE="$task_dir/google.json"
+          ssh_options=(-i "$task_dir/ssh_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$task_dir/known_hosts" -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          # Match all deployed Python source, not just a CLI name or database head.
+          # Shared deployment lock covers verification and import in the same SSH call.
+          cat > "$task_dir/fingerprint.py" <<'PYTHON'
+          import hashlib
+          from pathlib import Path
+          digest = hashlib.sha256()
+          paths = sorted(path for root in ("app", "scripts", "alembic") for path in Path(root).rglob("*.py") if "__pycache__" not in path.parts)
+          if not paths:
+              raise SystemExit("Missing release source")
+          for path in paths:
+              digest.update(str(path).encode() + b"\0" + path.read_bytes() + b"\0")
+          print(digest.hexdigest())
+          PYTHON
+          expected=$(python "$task_dir/fingerprint.py")
+          [[ "$expected" =~ ^[a-f0-9]{64}$ ]]
+          fingerprint_code=$(cat "$task_dir/fingerprint.py")
+          remote_guard="cd /opt/aigc-prompt && exec 8> .release-deploy.lock && flock -s -w 60 8 && actual=\$(sudo -n docker compose exec -T api python -c '$fingerprint_code' < /dev/null) && test \"\$actual\" = '$expected' || { echo 'Release code differs; sync stopped' >&2; exit 1; }"
+          # Verified source and digest intentionally expand locally into the guarded command.
+          # shellcheck disable=SC2029
+          ssh "${ssh_options[@]}" "$remote" "$remote_guard; sudo -n docker compose exec -T api python -m scripts.seo_sync status < /dev/null" > "$task_dir/status.json"
+          # Status contains no credentials. Validate the mode and frontier before export.
+          through=$(python - "$task_dir/status.json" <<'PYTHON'
+          import json, sys
+          from datetime import date
+          value = json.load(open(sys.argv[1]))
+          if not value.get("configured") or value.get("mode") != "external":
+              raise SystemExit("External Google sync is not configured")
+          frontier = value.get("data_through")
+          if frontier is not None:
+              if date.fromisoformat(frontier).isoformat() != frontier:
+                  raise SystemExit("Invalid sync frontier")
+              print(frontier)
+          PYTHON
+          )
+          args=()
+          if [[ -n "$through" ]]; then args=(--data-through "$through"); fi
+          attempt_at=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+          record_failure() {
+            original_exit=$?
+            trap - ERR
+            # Fixed safe code only. A changed release is never allowed to record a result.
+            # shellcheck disable=SC2029
+            timeout 90 ssh "${ssh_options[@]}" "$remote" "$remote_guard; timeout 20 sudo -n docker compose exec -T api python -m scripts.seo_sync failure --attempt-at '$attempt_at' --code upstream_unavailable" || echo 'Could not record Google sync failure; inspect this workflow run' >&2
+            exit "$original_exit"
+          }
+          trap record_failure ERR
+          uv run --no-sync python -m scripts.seo_sync export "${args[@]}" > "$task_dir/bundle.json"
+          # Import reads the bounded bundle from stdin; never persist the credential on the host.
+          # Verified source and digest intentionally expand locally into the guarded command.
+          # shellcheck disable=SC2029
+          ssh "${ssh_options[@]}" "$remote" "$remote_guard; sudo -n docker compose exec -T api python -m scripts.seo_sync import" < "$task_dir/bundle.json"

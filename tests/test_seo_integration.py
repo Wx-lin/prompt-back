@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.seo import SeoSnapshot
+from app.models.seo_sync import SeoApiDay, SeoSyncState
 from app.schemas.seo import SeoImport
 from app.services.seo_service import get_report, import_snapshot
 
@@ -29,7 +30,8 @@ def test_snapshot_windows_and_totals():
             async with admin.begin() as conn:
                 await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
             async with engine.begin() as conn:
-                await conn.run_sync(lambda c: SeoSnapshot.__table__.create(c))
+                for table in [SeoSnapshot.__table__, SeoApiDay.__table__, SeoSyncState.__table__]:
+                    await conn.run_sync(table.create)
             async with async_sessionmaker(engine, expire_on_commit=False)() as db:
                 start, end = date(2026, 10, 1), date(2026, 10, 2)
                 assert (await get_report(db, "google", start, end))["totals"] is None

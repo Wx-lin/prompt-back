@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import get_db
 from app.models.seo import SeoSnapshot
+from app.models.seo_sync import SeoApiDay, SeoSyncState
 from app.routers.seo import router
 from app.utils.admin_auth import verify_admin_key
 
@@ -27,7 +28,8 @@ async def lifespan(app):
         async with admin.begin() as conn:
             await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
         async with engine.begin() as conn:
-            await conn.run_sync(lambda c: SeoSnapshot.__table__.create(c))
+            for table in [SeoSnapshot.__table__, SeoApiDay.__table__, SeoSyncState.__table__]:
+                await conn.run_sync(table.create)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
 
         async def local_db():

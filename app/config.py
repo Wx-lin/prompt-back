@@ -54,6 +54,12 @@ class Settings(BaseSettings):
             raise ValueError("Google certificate URL must use HTTPS")
         return value
 
+    # --- Search Console: dedicated read-only identity, independent from login ---
+    gsc_enabled: bool = False
+    gsc_sync_mode: Literal["server", "external"] = "server"
+    gsc_credentials_file: str = ""
+    gsc_sync_hour: int = Field(default=6, ge=0, le=23)
+
     # --- 邮件服务（Resend） ---
     resend_api_key: str = ""
     email_from: str = "noreply@aigc-prompt.com"
