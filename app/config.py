@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     prompt_vision_api_key: SecretStr = SecretStr("")
     prompt_vision_model: str = ""
     prompt_vision_max_tokens: int = Field(default=4096, ge=256, le=16384)
-    prompt_analysis_daily_limit: int = Field(default=5, ge=1, le=10000)
+    prompt_analysis_daily_limit: int = Field(default=10, ge=1, le=10000)
     prompt_analysis_global_daily_limit: int = Field(default=100, ge=1, le=1000000)
     prompt_analysis_queue_limit: int = Field(default=10, ge=1, le=10000)
     prompt_analysis_upload_hourly_limit: int = Field(default=30, ge=1, le=10000)

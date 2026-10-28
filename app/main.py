@@ -25,6 +25,7 @@ from app.routers import (
     crawl_operations,
     model_catalog,
     prompt_analyses,
+    prompt_conversations,
     prompts,
     search,
     seo,
@@ -77,6 +78,7 @@ async def prevent_seo_cache(request, call_next):
 
 app.include_router(submissions.router)
 app.include_router(prompt_analyses.router)
+app.include_router(prompt_conversations.router)
 app.include_router(admin_submissions.router)
 app.include_router(prompts.router)
 app.include_router(auth.router)

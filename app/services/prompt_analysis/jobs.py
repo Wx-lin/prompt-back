@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import get_settings
 from app.models import PromptAnalysis, PromptAnalysisAsset, PromptAnalysisAttempt
+from app.services.vision.conversation_adapter import CHAT_PROMPT_VERSION
+from app.services.vision.text_adapter import TEXT_PROMPT_VERSION
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -21,8 +23,16 @@ Sessions = async_sessionmaker[AsyncSession]
 class ClaimedJob:
     id: uuid.UUID
     lease_token: uuid.UUID
-    object_key: str
+    object_key: str | None
     started_at: datetime
+    input_type: str = "image"
+    idea_text: str | None = None
+    purpose: str | None = None
+    style: str | None = None
+    conversation_id: uuid.UUID | None = None
+    user_message: str | None = None
+    context_snapshot: dict | None = None
+    conversation_mode: str = "auto"
 
 
 async def _clock(db: AsyncSession) -> datetime:
@@ -48,10 +58,18 @@ def _terminal(job: PromptAnalysis, now: datetime, *, status: str, quota: str, er
     job.lease_token = None
     job.lease_expires_at = None
     job.image_retain_until = now + timedelta(days=30 if status == "succeeded" else 1)
-    job.history_retain_until = now + timedelta(days=30)
+    # A conversation's root deadline is a hard privacy cap, never renewed by
+    # continued generation/retries or their later completion timestamps.
+    if not job.conversation_id:
+        job.history_retain_until = now + timedelta(days=30)
     if job.deleted_at:
         job.generated_result = None
         job.edited_prompts = None
+        job.idea_text = None
+        job.purpose = None
+        job.style = None
+        job.user_message = None
+        job.context_snapshot = None
 
 
 async def claim_job(sessions: Sessions) -> ClaimedJob | None:
@@ -72,13 +90,15 @@ async def claim_job(sessions: Sessions) -> ClaimedJob | None:
         async with sessions() as db, db.begin():
             # Shared lock order: assets first, then analyses. Never wait on a
             # busy asset while holding a different analysis lock.
-            asset = await db.scalar(
-                select(PromptAnalysisAsset)
-                .where(PromptAnalysisAsset.id == asset_id)
-                .with_for_update(skip_locked=True)
-            )
-            if asset is None:
-                continue
+            asset = None
+            if asset_id is not None:
+                asset = await db.scalar(
+                    select(PromptAnalysisAsset)
+                    .where(PromptAnalysisAsset.id == asset_id)
+                    .with_for_update(skip_locked=True)
+                )
+                if asset is None:
+                    continue
             job = await db.scalar(
                 select(PromptAnalysis)
                 .where(PromptAnalysis.id == job_id, PromptAnalysis.status == "queued")
@@ -91,8 +111,12 @@ async def claim_job(sessions: Sessions) -> ClaimedJob | None:
                 _terminal(job, now, status="canceled", quota="released", error=None)
             elif job.created_at + timedelta(seconds=settings.prompt_analysis_queue_ttl_seconds) <= now:
                 _terminal(job, now, status="failed", quota="released", error="queue_expired")
-            elif asset.state != "ready" or job.image_retain_until <= now:
+            elif job.input_type == "image" and (
+                asset is None or asset.state != "ready" or job.image_retain_until <= now
+            ):
                 _terminal(job, now, status="failed", quota="released", error="image_unavailable")
+            elif job.input_type == "text" and not job.idea_text:
+                _terminal(job, now, status="failed", quota="released", error="input_unavailable")
             else:
                 token = uuid.uuid4()
                 job.status = "running"
@@ -100,7 +124,12 @@ async def claim_job(sessions: Sessions) -> ClaimedJob | None:
                 job.lease_token = token
                 job.lease_expires_at = now + timedelta(seconds=settings.prompt_analysis_lease_seconds)
                 job.started_at = now
-                return ClaimedJob(job.id, token, asset.object_key, now)
+                return ClaimedJob(
+                    job.id, token, asset.object_key if asset else None, now,
+                    job.input_type, job.idea_text, job.purpose, job.style,
+                    job.conversation_id, job.user_message, job.context_snapshot,
+                    job.config_snapshot.get("conversation_mode", "auto"),
+                )
     return None
 
 
@@ -108,20 +137,33 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
     """Persist intent exactly once BEFORE external I/O, with asset/lease fencing."""
     settings = get_settings()
     async with sessions() as db, db.begin():
-        asset_id = await db.scalar(select(PromptAnalysis.asset_id).where(PromptAnalysis.id == job_id))
-        if asset_id is None:
+        record = (
+            await db.execute(select(PromptAnalysis.asset_id).where(PromptAnalysis.id == job_id))
+        ).first()
+        if record is None:
             return False
-        asset = await db.scalar(
-            select(PromptAnalysisAsset).where(PromptAnalysisAsset.id == asset_id).with_for_update()
-        )
+        asset_id = record.asset_id
+        asset = None
+        if asset_id is not None:
+            asset = await db.scalar(
+                select(PromptAnalysisAsset).where(PromptAnalysisAsset.id == asset_id).with_for_update()
+            )
         job = await db.scalar(select(PromptAnalysis).where(PromptAnalysis.id == job_id).with_for_update())
         now = await _clock(db)
-        if not _valid_lease(job, lease_token, now) or job.deleted_at or asset.state != "ready":
+        if not _valid_lease(job, lease_token, now) or job.deleted_at:
+            return False
+        if job.input_type == "image" and (asset is None or asset.state != "ready"):
+            return False
+        if job.input_type == "text" and not job.idea_text:
+            _terminal(job, now, status="failed", quota="released", error="input_unavailable")
             return False
         expected = {
             "provider": settings.prompt_vision_provider,
             "model": settings.prompt_vision_model,
-            "prompt_version": settings.prompt_analysis_prompt_version,
+            "prompt_version": (
+                CHAT_PROMPT_VERSION if job.conversation_id else
+                TEXT_PROMPT_VERSION if job.input_type == "text" else settings.prompt_analysis_prompt_version
+            ),
             "max_tokens": settings.prompt_vision_max_tokens,
             "base_url": settings.prompt_vision_base_url,
             "enable_thinking": False if settings.prompt_vision_provider == "dashscope" else None,
@@ -135,7 +177,7 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
         ):
             _terminal(job, now, status="failed", quota="released", error="configuration_changed")
             return False
-        if job.image_retain_until <= now:
+        if job.input_type == "image" and job.image_retain_until <= now:
             _terminal(job, now, status="failed", quota="released", error="image_unavailable")
             return False
         if job.created_at + timedelta(seconds=settings.prompt_analysis_queue_ttl_seconds) <= now:
@@ -157,7 +199,7 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
                 dispatched_at=now,
             )
         )
-        job.phase = "analyzing"
+        job.phase = "generating" if job.input_type == "text" else "analyzing"
         return True
 
 
@@ -178,13 +220,19 @@ async def heartbeat_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid
         return True
 
 
-def _result_parts(result):
+def _result_parts(result, *, allow_reply=False):
     from app.schemas.prompt_analysis import ModelResult
+    from app.schemas.prompt_conversation import ConversationReplyResult
 
     content = getattr(result, "result", result)
-    if isinstance(content, ModelResult):
+    if isinstance(content, (ModelResult, ConversationReplyResult)):
         content = content.model_dump(mode="json")
-    validated = ModelResult.model_validate(content).model_dump(mode="json")
+    schema = (
+        ConversationReplyResult
+        if allow_reply and isinstance(content, dict) and content.get("schema_version") == "reply-1"
+        else ModelResult
+    )
+    validated = schema.model_validate(content).model_dump(mode="json")
     provider_id = getattr(result, "provider_request_id", None)
     raw_usage = getattr(result, "usage", {})
     # Usage is numeric accounting only, never arbitrary provider response text.
@@ -212,12 +260,21 @@ async def finish_job(
     uncertain: bool = False,
 ) -> bool:
     """Atomically store a locally validated result and its successful state."""
-    parts = _result_parts(result) if result is not None else None
     async with sessions() as db, db.begin():
         job = await db.scalar(select(PromptAnalysis).where(PromptAnalysis.id == job_id).with_for_update())
         now = await _clock(db)
         if not _valid_lease(job, lease_token, now):
             return False
+        try:
+            parts = _result_parts(
+                result,
+                allow_reply=bool(job.conversation_id)
+                and job.config_snapshot.get("conversation_mode", "auto") == "auto",
+            ) if result is not None else None
+        except (ValueError, TypeError):
+            # Invalid output is a known failure, not a persistence outage or a
+            # reason to send another provider request.
+            parts, error_code, uncertain = None, "model_invalid_output", False
         attempt = await db.scalar(
             select(PromptAnalysisAttempt)
             .where(PromptAnalysisAttempt.analysis_id == job_id)

@@ -91,6 +91,11 @@ async def upload(db, redis, user_id, file):
     ensure_enabled()
     storage.require_storage_configuration()
     await limits.upload_limit(redis, user_id)
+    return await store_upload(db, user_id, file)
+
+
+async def store_upload(db, user_id, file):
+    """Normalize/store only after a caller has enforced ownership and upload quota."""
     content_type = (file.content_type or "").split(";")[0].lower()
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise AnalysisError(415, "UNSUPPORTED_IMAGE", "请上传 JPEG、PNG 或 WebP 图片")

@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 from app.services.prompt_analysis.errors import AnalysisError
 
 logger = logging.getLogger(__name__)
-PRIVATE_PREFIXES = ("/api/prompt-assets", "/api/prompt-analyses")
+PRIVATE_PREFIXES = ("/api/prompt-assets", "/api/prompt-analyses", "/api/prompt-conversations")
 
 
 def request_id(request):

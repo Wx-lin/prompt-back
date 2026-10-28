@@ -16,6 +16,23 @@ def _active_lease(job: PromptAnalysis, now: datetime) -> bool:
     return bool(job.status == "running" and job.lease_expires_at and job.lease_expires_at > now)
 
 
+async def _expire_job(db, job: PromptAnalysis, now: datetime) -> None:
+    job.deleted_at = now
+    await db.flush()
+    job.generated_result = None
+    job.edited_prompts = None
+    job.idea_text = None
+    job.purpose = None
+    job.style = None
+    job.user_message = None
+    job.context_snapshot = None
+    if job.status == "queued":
+        job.status = "canceled"
+        job.quota_state = "released"
+        job.finished_at = now
+        job.phase = "finished"
+
+
 async def expire_history(sessions: Sessions) -> int:
     """Persist tombstones before clearing text, retaining idempotency/accounting."""
     count = 0
@@ -27,6 +44,7 @@ async def expire_history(sessions: Sessions) -> int:
                 .where(
                     PromptAnalysis.deleted_at.is_(None),
                     PromptAnalysis.history_retain_until <= now,
+                    PromptAnalysis.asset_id.is_not(None),
                 )
                 .distinct()
                 .order_by(PromptAnalysis.asset_id)
@@ -54,16 +72,26 @@ async def expire_history(sessions: Sessions) -> int:
                 )
             ).all()
             for job in jobs:
-                job.deleted_at = now
-                await db.flush()
-                job.generated_result = None
-                job.edited_prompts = None
-                if job.status == "queued":
-                    job.status = "canceled"
-                    job.quota_state = "released"
-                    job.finished_at = now
-                    job.phase = "finished"
+                await _expire_job(db, job, now)
                 count += 1
+        # Assetless text work has no object lock. Keep its tombstone/accounting,
+        # clearing the original idea with the same retention as generated text.
+        text_jobs = (
+            await db.scalars(
+                select(PromptAnalysis)
+                .where(
+                    PromptAnalysis.asset_id.is_(None),
+                    PromptAnalysis.deleted_at.is_(None),
+                    PromptAnalysis.history_retain_until <= now,
+                )
+                .order_by(PromptAnalysis.id)
+                .limit(100)
+                .with_for_update(skip_locked=True)
+            )
+        ).all()
+        for job in text_jobs:
+            await _expire_job(db, job, now)
+            count += 1
     return count
 
 

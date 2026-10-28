@@ -146,3 +146,32 @@
 - 发送前持久化且校验租约的 dispatch_intent；有发送意图但结果丢失时 unknown，首版不自动重调模型。删除不重置额度，执行中删除不复活结果，SQLAlchemy 加锁重查需刷新已有 identity-map 对象。
 - 新增功能默认关闭，模型独立配置，未配置明确503；不能用模拟结果冒充真实效果。私有图片/提示词/签名/派生签名材料不进日志，COS日志保护只影响私有操作上下文。
 - 迁移 head `e04b75ad6312` 接 `d91a72f4b308`，未扩大自动迁移白名单。当前模型已选 `qwen3.8-max`，显式 `dashscope` 分支关闭思考；本地两张实图和COS私有ACL通过。新AppID、生产COS配置、全面模型质量/费用、网站BFF和小程序真机及生产部署仍需验收。运行、接口和实测边界见 [图片转提示词后端](docs/image-to-prompt.md)。
+
+## 2026-10-26 文字想法生成与双模式小程序
+
+- 用户选择双模式首页（文字/图片、历史旁细灰折叠箭头）与生成中/结果/手动编辑页面，本轮不做聊天或多轮改写。
+- 现有 `POST /api/prompt-analyses` 扩展 `input_type=text`、1–500 字符 `idea_text`、可选 `purpose/style`；旧 asset_id 图片请求兼容。所有权、共享预算、幂等、revision 和 unknown 恢复协议不变。
+- text 任务不依赖 COS 或资产锁，但必须经过同样的租约与发送意图栅栏。使用独立 `text-v1` 模板和现有 provider 配置，严格校验双语结果；不能用图片观察模板生成纯文字想法。
+- 新迁移 `f15c86be7423` 接 `e04b75ad6312`，不扩大自动迁移白名单。存在文字任务时禁止降级以保护历史/计费墓碑，发布前审阅迁移并同步 API 与 Worker。
+- 原想法、用途、风格属于私有任务输入；删除和历史到期须清除这些字段及生成/编辑正文，必要幂等/额度元数据保留。不得打印输入、模型原文或凭据。
+- 本轮新能力仍需联合验收/正式发布；没有额外付费模型调用、生产迁移、推送或部署。接口、技术栈与边界见 `docs/image-to-prompt.md` 的本日条目。
+
+## 2026-10-26 网站同页图文聊天
+
+- 用户批准网站最新首页视觉与同页图库/聊天，网站支持文字、图片或图文首轮以及连续改写；这不改动小程序已批准的单次文字/图片页面流程。前置仍包含本分支未提交的 `f15c86be7423` 文字功能，不得用旧 main 覆盖它。
+- 会话复用 `PromptAnalysis` 耐久任务：每次发送对应一个任务/版本，根任务ID为会话ID；旧单次分析在会话历史中按自身ID归一化为一轮。新增 `conversation_id/parent_analysis_id/conversation_turn/user_message/context_snapshot`，不重复存储另一份结果。
+- `/api/prompt-conversations` 提供创建/列表，`/{id}` 详情/整组删除，`/{id}/messages` 续写，`/{id}/retry` 仅主动重试最新failed/canceled。unknown只恢复查询，不能自动或通过retry再次派发。普通续写必须指向当前最新且成功的任务，并匹配其revision。
+- 旧 `/api/prompt-analyses` 历史只列原单次image/text，不混入网站chat轮次；旧单轮DELETE遇会话根、子轮或已有chat续写的legacy根，返回409 `CONVERSATION_MANAGED`，不暗中放大为整段删除，也不允许删失败轮后绕过最新父版约束。整组删除只能经会话DELETE明确执行。
+- 服务器冻结父版有效中英提示词（包含人工编辑）、画面要点和最多6条近期要求，用独立 `chat-v1` 严格结构模板；客户端不能传上下文或供应商消息。每会话最多100轮，删除不重置计费/幂等；用户共享原有单在途、频率和每日配额。创建、编辑、删除遵守budget→asset（如有）→job的锁序，Worker保留原dispatch fence。
+- 私密消息与上下文随整组删除、单条分析删除和到期清理清空；执行中删除不复活。整组留存统一封顶为根任务原有30天截止，新增轮次、重试和完成不会续期，避免根过期后残留不可见的子轮原文。响应不暴露内部context。会话和父任务有数据库同所有者复合外键；写入口继续限体和private/no-store。
+- `POST /api/prompt-assets/from-prompt {prompt_id}` 仅从实际公开作品首图映射本配置COS/CDN的 `prompts/`、`submissions/` 或真实图库使用的 `library/` 对象，通过SDK有界读取、实际解码和私有重编码，不接受任意URL、外域、查询串、重定向或私有工具对象前缀。上传频率在读取前检查。
+- 新迁移 `27f86a5d9c10` 接 `f15c86be7423`，没有扩大自动迁移白名单。存在会话（包括删除后的计费墓碑）拒绝降级。发布需先审阅迁移，再同步API与Worker，随后更新网站；当前仅本地实现、假供应商验证，没有生产迁移/付费模型调用/提交/部署。
+
+## 2026-10-28 网站普通对话与创作分流
+
+- 用户明确先给网站聊天加闲聊，使用既有FastAPI/Worker单次模型调用，不引Agent框架或新数据库迁移，小程序不改。会话模板为chat-v2：auto可以返回严格reply-1普通正文或原ModelResult；generate及无文字的新图片必须返回提示词，不先分类再调用第二次。
+- ConversationInput增加mode=auto/generate，默认auto；显式generate进入幂等摘要，模式冻结于config_snapshot并随主动retry继承。旧auto摘要兼容，dispatch/租约/unknown/所有权/根留存期限/额度边界保持；普通回复同样消耗现有模型调用配额。
+- reply-1的title<=80、reply<=4000，均非空且不允许额外字段；保存于既有generated_result JSONB。会话响应投影为response_type=assistant、assistant_reply、result/prompt=null，禁止把普通回复编辑成提示词。旧单次图文API不接受reply结果。
+- version保留消息轮次；prompt_number只给成功提示词计数，普通回复和失败轮不增加提示词版本。整段详情一次遍历计算编号，单条分析GET才按需查询计数。
+- 并发parent仍是最新成功消息及revision；创作上下文另回溯最近真正提示词（含人工编辑），并冻结最多6条user/assistant对话。纯闲聊也能续聊，“第二种”等指代有助手回复可用；聊过6轮后仍能找到之前提示词。私有删除/到期清理仍清除全部正文和上下文。
+- API/Worker/前端需同版使用；旧chat-v1排队任务在模板升级后按既有configuration_changed保护失败，禁止悄悄换模板重发。发布前应检查在途任务；本次只重载无在途任务的本机preview服务，未部署生产。

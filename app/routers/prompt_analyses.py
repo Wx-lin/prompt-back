@@ -52,7 +52,10 @@ async def create_analysis(
         raise AnalysisError(422, "INVALID_IDEMPOTENCY_KEY", "请提供有效的请求标识") from None
     token = request.headers.get("authorization", "").partition(" ")[2]
     source = decode_access_token_client(token) or "legacy"
-    job, created = await api.create(db, redis, current_user.id, body.asset_id, idempotency_key, source)
+    job, created = await api.create(
+        db, redis, current_user.id, body.asset_id, idempotency_key, source,
+        input_type=body.input_type, idea_text=body.idea_text, purpose=body.purpose, style=body.style,
+    )
     return success(request, await api.detail(db, job), status_code=202 if created else 200)
 
 

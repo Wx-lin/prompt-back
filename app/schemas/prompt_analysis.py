@@ -3,7 +3,7 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
 class _StrictResult(BaseModel):
@@ -58,7 +58,24 @@ class ModelResult(_StrictResult):
 class CreateAnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    asset_id: UUID
+    input_type: Literal["image", "text"] = "image"
+    asset_id: UUID | None = None
+    idea_text: Annotated[
+        str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=500)
+    ] | None = None
+    purpose: Literal["wallpaper", "avatar", "poster", "product", "illustration"] | None = None
+    style: Literal["cinematic", "photorealistic", "illustration", "anime", "minimalist"] | None = None
+
+    @model_validator(mode="after")
+    def require_matching_input(self) -> "CreateAnalysisRequest":
+        if self.input_type == "text":
+            if self.asset_id is not None or self.idea_text is None:
+                raise ValueError("Text tasks require an idea and no image asset")
+        elif self.asset_id is None or any(
+            field is not None for field in (self.idea_text, self.purpose, self.style)
+        ):
+            raise ValueError("Image tasks require only an image asset")
+        return self
 
 
 class EditAnalysisRequest(BaseModel):

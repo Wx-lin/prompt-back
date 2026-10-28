@@ -61,7 +61,12 @@ async def run_once(sessions: Sessions) -> bool:
             settings.prompt_analysis_execution_timeout
             - (datetime.now(UTC) - claim.started_at).total_seconds()
         )
-        image = await asyncio.wait_for(storage.read_private(claim.object_key), timeout=max(0.01, remaining))
+        image = None
+        input_type = getattr(claim, "input_type", "image")
+        if input_type == "image":
+            image = await asyncio.wait_for(
+                storage.read_private(claim.object_key), timeout=max(0.01, remaining)
+            )
         if not await dispatch_job(sessions, claim.id, claim.lease_token):
             await _persist(sessions, claim, error_code="dispatch_fenced")
             return True
@@ -74,7 +79,18 @@ async def run_once(sessions: Sessions) -> bool:
             await _persist(sessions, claim, error_code="execution_timeout")
             return True
         timeout = min(settings.prompt_analysis_call_timeout, remaining)
-        result = await asyncio.wait_for(vision.analyze_image(image, timeout=timeout), timeout=timeout)
+        if getattr(claim, "conversation_id", None):
+            operation = vision.generate_conversation(
+                claim.user_message or "", context=claim.context_snapshot, image=image, timeout=timeout,
+                mode=getattr(claim, "conversation_mode", "auto"),
+            )
+        elif input_type == "text":
+            operation = vision.generate_prompt(
+                claim.idea_text, purpose=claim.purpose, style=claim.style, timeout=timeout
+            )
+        else:
+            operation = vision.analyze_image(image, timeout=timeout)
+        result = await asyncio.wait_for(operation, timeout=timeout)
         await _persist(sessions, claim, result=result)
     except vision.VisionError as exc:
         await _persist(sessions, claim, error_code=exc.code, uncertain=exc.uncertain)
@@ -122,7 +138,6 @@ async def run() -> None:
                     last_cleanup = loop.time()
                 try:
                     vision.require_vision_configuration()
-                    storage.require_storage_configuration()
                     ready = True
                 except Exception:
                     ready = False

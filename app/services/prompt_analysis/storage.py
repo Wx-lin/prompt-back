@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import mimetypes
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -67,6 +68,26 @@ async def read_private(object_key: str) -> bytes:
 
     with _private_sdk_operation():
         return await asyncio.to_thread(read)
+
+
+async def read_public_prompt(object_key: str) -> tuple[bytes, str]:
+    """Read only a service-validated key from our configured bucket, never a URL."""
+    require_storage_configuration()
+
+    def read():
+        response = cos_service._build_client().get_object(Bucket=get_settings().cos_bucket, Key=object_key)
+        stream = response["Body"].get_raw_stream()
+        try:
+            body = stream.read(5 * 1024 * 1024 + 1)
+            if len(body) > 5 * 1024 * 1024:
+                raise AnalysisError(413, "PAYLOAD_TOO_LARGE", "参考图片不能超过5MiB")
+            content_type = response.get("Content-Type") or mimetypes.guess_type(object_key)[0] or ""
+            return body, content_type.split(";")[0].lower()
+        finally:
+            stream.close()
+
+    with _private_sdk_operation():
+        return await asyncio.wait_for(asyncio.to_thread(read), timeout=20)
 
 
 async def delete_private(object_key: str) -> None:

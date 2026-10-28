@@ -439,3 +439,49 @@ DATABASE_URL=postgresql+asyncpg://wangxinlin@localhost:5432/aigc_prompt_dev
 - 审查修复：文件异步读取用generation gate防止旧预览复活；平均排名上限防止聚合溢出。
 - 尚未提交/推送/部署；Google/Baidu账户未验证、自动同步未配置、真实导出格式尚未拿到。当前仅人工导入模式。部署后必须真实验证正式域名下新管理API及页面，不能用本地Vite代理替代网关验收。
 - 数据口径、导入限制见 docs/seo-search-performance.md；实现计划见 docs/superpowers/plans/2026-10-16-seo-performance.md。
+
+## 2026-10-26：帮我写提示词与图文任务统一
+
+用户批准双模式首页轻量折叠及生成结果/手动编辑UI，要求先后端、再原生小程序。本轮沿用 FastAPI/Python、PostgreSQL/SQLAlchemy/Alembic、Redis 和原有 OpenAI 兼容/DashScope provider；图片原有 COS 流程不变，文字任务不经过图片存储。
+
+后端扩展现有任务创建请求，持久化 input_type、idea_text、purpose、style；图片默认兼容，文字长度/选项/互斥字段双层校验。统一私有历史、幂等、配额、单在途、revision编辑与删除。执行链按文字/图片区分，文字使用 text-v1 生成严格双语提示词与创作要点，保留租约、dispatch intent、unknown 保守恢复及无自动模型重试。删除/到期清原始输入与正文，计费/幂等墓碑保留。
+
+迁移 f15c86be7423 接 e04b75ad6312；仅在隔离测试schema验证升级/回退和旧图片任务保留，存在文字任务拒绝降级。没有修改自动迁移白名单。单元、隔离API/SQL/Redis、Worker与SDK本地HTTP传输闭环覆盖本次链路；最终全量与覆盖率数字由主线程验收写入，不将替身测试称为真实模型效果。
+
+小程序端按选定图接文字模式、用途/风格、轻量折叠、真实任务/历史和当前语言编辑；项目技术与留痕位于小程序仓库。法律静态内容补充文字想法/选项提交及模型处理范围，1.3.0 / 2026-10-26仍为待发布审阅稿。未新增聊天、生图、支付、AppID、生产迁移或额外付费模型调用，未提交/推送/部署。
+
+本轮最终本地验证：724 passed，无跳过。新增及关联覆盖专项行93.12%、分支83.93%（非全仓）；Ruff及diff检查通过。dispatch后删除文字任务并等待供应商返回的新增竞态测试通过，原输入/结果不复活且额度保持consumed。小程序验收及锁屏未验项见其VALIDATION.md，未部署。
+
+## 2026-10-26 网站同页图文聊天后端
+
+在上述文字功能未提交的分支基线继续扩展。用户批准网站统一输入、同页聊天、版本/历史与连续调整；小程序旧单次文字/图片API仍原样兼容。技术栈继续为Python/FastAPI、PostgreSQL/SQLAlchemy/Alembic、Redis、私有COS和现有OpenAI兼容/DashScope供应商，不新增前端伪上下文或其他模型服务。
+
+新增会话创建、列表、详情、续写、受限主动重试与整组删除。每条turn复用原耐久任务；根ID分组、版本序号持久化，历史纳入旧分析。服务器验证当前最新成功父版和revision，冻结人工编辑后的中英提示词、画面要点、最多6条近期要求，独立chat-v1处理图文/文字续写。新轮仍经过同一频率、额度、单在途和派发租约；unknown拒绝retry。执行中删除和历史到期清原message/context及结果，保留必要计费墓碑。受控图库带图接口只接受公开prompt_id，严格映射本COS桶对象并限制5MiB，走原解码/私有重编码。
+
+迁移27f86a5d9c10前置f15c86be7423；隔离schema验证升降级与会话存在时拒绝降级（包括删除后墓碑），没有变更自动迁移白名单。TDD首次RED为新路由不存在返回404，后续输入边界RED后补严格上下文校验。新增56项测试覆盖真实SQL/Redis、API→Worker→SDK本地传输、父版编辑快照、图文首轮与文字续写、旧数据、幂等回放、同key/同asset并发、父版冲突、100轮/近期消息限制、unknown不重调、删除竞态、SSRF/流长度与关闭、迁移保护。留存回归先RED确认完成会续期，修复后整组统一继承根任务原30天截止；跨deadline新增轮/完成不续期，到期清整组消息、上下文与正文，legacy单次留存不变。复核新增4项RED→GREEN：旧history不混入chat；旧单轮DELETE拒绝chat根/子轮及已有chat子轮的legacy根，409 CONVERSATION_MANAGED且私密内容仍完整；新会话DELETE整组全清，失败轮不能借旧DELETE绕过父版约束。
+
+全量780 passed，无跳过；Ruff app/tests/新迁移与git diff检查通过。原有兼容greenlet/thread追踪的专项coverage harness补入新schema/router：344 passed，关联功能行94.01%（1507/1603）、分支85.76%（295/344），非全仓覆盖；新会话核心service行96.15%、分支83.33%，新provider行88.24%，其余新router/schema/公开源映射行95–100%。没有真实供应商调用、生产数据变更、提交、推送或部署。网站浏览器联调由前端集成阶段另记，不把本地假供应商结果称为真实生成质量。
+
+## 2026-10-27 本地网站真实创作运行与验收
+
+- 新增独立本地ASGI入口/可信来源桥接及启动器，生产app不导入。普通图库与Google登录继续用原真实API；本地8040只运行新创作API与同代码Worker，使用新建preview库（精确27f86a5d9c10）及Redis12，不改线上数据库或旧dev库。
+- 每私有请求经固定8000认证API验证并镜像必要用户UUID/昵称/头像，不保存token/email/google_id、不搬生产JWT密钥。公开参考图经固定真实公开详情验证，再复用原受控COS导入。启动器只经已验证SSH将六项模型配置注入子进程内，日志/文件不落密钥，退出统一收回API/Worker。
+- 真实公开图库对象在library/目录，增加该明确前缀，其他同桶/HTTPS/无查询串/无穿越/5MiB边界不变。来源TDD先两例RED，修复后29项通过；入口/来源组合69项，入口/启动器74项，新增运行模块覆盖约96%，Ruff/diff通过。
+- 用户明确允许一次真实生成后，浏览器本地3137以公开唇膜参考图完成真实私有COS→新会话→Worker→Qwen3.8-Max→中英结果落库。SQL核对1条succeeded与1条attempt；浏览器中英文切换、历史保存及重开结果通过，没有第二次模型调用。首次library校验失败发生在任务/模型调用之前。
+- 本地启动命令与安全边界记录在docs/image-to-prompt.md本地真实创作节；数据保留在本地预览库，未提交、推送、部署或执行生产迁移。
+
+## 2026-10-28 网站闲聊与提示词结果共存（本地）
+
+- 将网站chat-v1的强制双语结果升级为chat-v2单调用分流：普通回复使用reply-1严格结构，显式生成/图片单独输入仍走原ModelResult。回复落现有JSONB，无新增数据库列、迁移或Agent框架。
+- 复用原API/Worker、幂等、额度和私有历史；模式写入请求摘要和任务配置，主动retry保持模式。API投影assistant_reply，普通正文不可编辑为提示词。消息轮次与提示词版本号分离，当前最新消息作为并发锚点，最近实际提示词及人工编辑作为创作上下文，带最多6条近期双方对话。
+- TDD：provider/schema先21失败/11保护用例通过，再关联121通过；服务7项先RED再GREEN。审查发现详情逐轮COUNT，补SQL查询观测用例先RED，改成一次遍历编号后GREEN；另覆盖显式retry原模式、持久化层拒绝强制生成的reply。
+- 最终关联398项通过，覆盖范围为既有prompt-analysis专项（非全仓）：行94.12%（1554/1651）、分支86.03%（308/358）。Ruff及diff检查通过；包括真实随机PostgreSQL schema/Redis命名空间、测试模型transport和旧图文/身份/迁移回归，不代表付费模型质量验收。
+- 本地8040/Worker已在无在途任务时重载，继续使用独立preview库和Redis12；8000真实图库/认证SSH转发已恢复，仅重用已核验主机的既有连接。没有生产数据库变更、提交、推送或部署。本任务真实模型验收另待用户确认最多2次调用，当前未消耗模型额度。
+- 接口与运行边界详见docs/image-to-prompt.md；计划见docs/superpowers/plans/2026-10-28-website-casual-chat.md。
+
+
+## 2026-10-28 每日个人额度调整为10次（本地生效）
+
+- 用户明确要求从每账号每日5次提高到10次。仅将app/config.py默认值与.env.example的PROMPT_ANALYSIS_DAILY_LIMIT同步为10；普通聊天/生成/修改共用、北京时间零点刷新、全站每日100次等规则保持原样，当日已用次数不清零。
+- 配置与本地启动器现有36项测试通过；实际Settings读取个人10/全站100。审查确认没有写死5次的前端/小程序文案，隔离测试自行配置的5/100不修改。
+- 重载前确认preview库无queued/running任务，正常终止原本地8040/API+Worker supervisor，再以明确PROMPT_ANALYSIS_DAILY_LIMIT=10启动同一preview库/Redis12和原模型配置。保留3000前端、8000真实图库/认证转发；没有模型调用、额度清零、提交、推送或生产部署。

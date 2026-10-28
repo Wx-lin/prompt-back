@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -57,6 +58,24 @@ class PromptAnalysis(Base):
             name="fk_prompt_analysis_asset_owner",
         ),
         UniqueConstraint("user_id", "idempotency_key", name="uq_prompt_analysis_idempotency"),
+        UniqueConstraint("id", "user_id", name="uq_prompt_analysis_owner"),
+        UniqueConstraint("conversation_id", "conversation_turn", name="uq_prompt_conversation_turn"),
+        ForeignKeyConstraint(
+            ["conversation_id", "user_id"], ["prompt_analyses.id", "prompt_analyses.user_id"],
+            name="fk_prompt_conversation_owner",
+        ),
+        ForeignKeyConstraint(
+            ["parent_analysis_id", "user_id"], ["prompt_analyses.id", "prompt_analyses.user_id"],
+            name="fk_prompt_parent_owner",
+        ),
+        CheckConstraint(
+            "conversation_turn IS NULL OR conversation_turn >= 1",
+            name="ck_prompt_conversation_turn",
+        ),
+        CheckConstraint(
+            "user_message IS NULL OR char_length(user_message) <= 500",
+            name="ck_prompt_conversation_message",
+        ),
         CheckConstraint(
             "status IN ('queued','running','succeeded','failed','unknown','canceled')",
             name="ck_prompt_analysis_status",
@@ -67,6 +86,23 @@ class PromptAnalysis(Base):
         ),
         CheckConstraint("revision >= 0", name="ck_prompt_analysis_revision"),
         CheckConstraint(
+            "(input_type = 'image' AND asset_id IS NOT NULL AND idea_text IS NULL "
+            "AND purpose IS NULL AND style IS NULL) OR "
+            "(input_type = 'text' AND asset_id IS NULL AND "
+            "((idea_text IS NOT NULL AND char_length(idea_text) BETWEEN 1 AND 500 "
+            "AND char_length(trim(idea_text)) > 0) OR "
+            "(deleted_at IS NOT NULL AND idea_text IS NULL)))",
+            name="ck_prompt_analysis_input",
+        ),
+        CheckConstraint(
+            "purpose IS NULL OR purpose IN ('wallpaper','avatar','poster','product','illustration')",
+            name="ck_prompt_analysis_purpose",
+        ),
+        CheckConstraint(
+            "style IS NULL OR style IN ('cinematic','photorealistic','illustration','anime','minimalist')",
+            name="ck_prompt_analysis_style",
+        ),
+        CheckConstraint(
             "status <> 'succeeded' OR deleted_at IS NOT NULL OR generated_result IS NOT NULL",
             name="ck_prompt_analysis_success_result",
         ),
@@ -74,11 +110,21 @@ class PromptAnalysis(Base):
         Index("ix_prompt_analyses_queue", "status", "created_at"),
         Index("ix_prompt_analyses_lease", "status", "lease_expires_at"),
         Index("ix_prompt_analyses_asset", "asset_id"),
+        Index("ix_prompt_analyses_conversation", "user_id", "conversation_id", "conversation_turn"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
-    asset_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    input_type: Mapped[str] = mapped_column(String(10), default="image", server_default="image")
+    idea_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    style: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    parent_analysis_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    conversation_turn: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    user_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context_snapshot: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(128))
     request_hash: Mapped[str] = mapped_column(String(64))
     source_client: Mapped[str] = mapped_column(String(30))

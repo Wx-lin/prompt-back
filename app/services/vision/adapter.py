@@ -14,10 +14,13 @@ from openai import (
     AsyncOpenAI,
     DefaultAsyncHttpxClient,
 )
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from app.config import get_settings
 from app.schemas.prompt_analysis import ModelResult
+from app.schemas.prompt_conversation import ConversationReplyResult
+
+_CONVERSATION_RESULT = TypeAdapter(ModelResult | ConversationReplyResult)
 
 
 class VisionError(Exception):
@@ -31,7 +34,7 @@ class VisionError(Exception):
 
 @dataclass(frozen=True)
 class VisionResult:
-    result: ModelResult
+    result: ModelResult | ConversationReplyResult
     provider_request_id: str | None
     usage: dict
     model: str | None = None
@@ -94,14 +97,17 @@ def _safe_usage(usage) -> dict:
     }
 
 
-def _parse_response(response) -> VisionResult:
+def _parse_response(response, *, allow_reply: bool = False) -> VisionResult:
     try:
         choice = response.choices[0]
         if choice.message.refusal or choice.finish_reason == "content_filter":
             raise VisionError("model_refused")
         if choice.finish_reason != "stop" or not choice.message.content:
             raise VisionError("model_invalid_output")
-        result = ModelResult.model_validate_json(choice.message.content)
+        result = (
+            _CONVERSATION_RESULT.validate_json(choice.message.content)
+            if allow_reply else ModelResult.model_validate_json(choice.message.content)
+        )
     except (ValidationError, ValueError, IndexError, AttributeError, TypeError):
         raise VisionError("model_invalid_output") from None
     model = getattr(response, "model", None)
