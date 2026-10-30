@@ -23,6 +23,7 @@ from app.routers import (
     auth,
     categories,
     crawl_operations,
+    miniprogram_features,
     model_catalog,
     prompt_analyses,
     prompt_conversations,
@@ -85,6 +86,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(categories.router)
 app.include_router(model_catalog.router)
+app.include_router(miniprogram_features.router)
 app.include_router(search.router)
 app.include_router(admin.router)
 app.include_router(admin_insights.router)

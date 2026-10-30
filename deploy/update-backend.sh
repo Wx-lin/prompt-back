@@ -7,7 +7,7 @@ migrate=${3:-false}
 admin_hash=${4:-}
 auto_migration=${5:-}
 reviewed_migration=${6:-}
-[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 || "$reviewed_migration" == e04b75ad6312 || "$reviewed_migration" == b6f20a93d812 || "$reviewed_migration" == a85c2f87d019 ]] || {
+[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 || "$reviewed_migration" == e04b75ad6312 || "$reviewed_migration" == b6f20a93d812 || "$reviewed_migration" == a85c2f87d019 || "$reviewed_migration" == c2b8e0364a21 ]] || {
     echo 'Unknown reviewed migration; stopped' >&2
     exit 1
 }
@@ -198,6 +198,10 @@ if [[ "$heads" == a85c2f87d019 && "$current" != "$heads" && ( "$migrate" != true
     echo 'Prompt conversation merge requires explicit reviewed dispatch; stopped' >&2
     exit 1
 fi
+if [[ "$heads" == c2b8e0364a21 && "$current" != "$heads" && ( "$migrate" != true || "$reviewed_migration" != c2b8e0364a21 ) ]]; then
+    echo 'Mini-program feature configuration requires explicit reviewed dispatch; stopped' >&2
+    exit 1
+fi
 if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
     case "$reviewed_migration" in
         f8b24d0c51e3) reviewed_parent=e7a13c9b40d2 ;;
@@ -207,6 +211,7 @@ if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
         e04b75ad6312) reviewed_parent=d91a72f4b308 ;;
         b6f20a93d812) reviewed_parent=e04b75ad6312 ;;
         a85c2f87d019) reviewed_parent=b6f20a93d812 ;;
+        c2b8e0364a21) reviewed_parent=a85c2f87d019 ;;
         *) echo "Unknown reviewed migration; stopped"; exit 1 ;;
     esac
     [[ "$heads" == "$reviewed_migration" && ( "$current" == "$reviewed_parent" || "$current" == "$heads" ) ]] || {

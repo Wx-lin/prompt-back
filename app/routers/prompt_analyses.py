@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from app.database import get_db
 from app.redis import get_redis_client
+from app.routers.miniprogram_features import enforce_feature_limit, read_features
 from app.schemas.prompt_analysis import CreateAnalysisRequest, EditAnalysisRequest
 from app.services.prompt_analysis import api, assets
 from app.services.prompt_analysis.errors import AnalysisError
@@ -96,9 +97,15 @@ async def delete_analysis(analysis_id: uuid.UUID, current_user=Depends(get_curre
 
 
 @router.get("/api/prompt-examples")
-async def examples(request: Request):
+async def examples(request: Request, features: str | None = None, db=Depends(get_db)):
     # Curated sample assets/results are not available yet. Never invent live results.
+    data = {"items": []}
+    cache_control = "public, max-age=300"
+    if features == "1":
+        await enforce_feature_limit(request, get_redis_client(), "public")
+        data["creation_enabled"] = (await read_features(db)).creation_enabled
+        cache_control = "no-store"
     return JSONResponse(
-        {"success": True, "data": {"items": []}, "error": None, "request_id": request_id(request)},
-        headers={"Cache-Control": "public, max-age=300"},
+        {"success": True, "data": data, "error": None, "request_id": request_id(request)},
+        headers={"Cache-Control": cache_control},
     )

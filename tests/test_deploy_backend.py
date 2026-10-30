@@ -318,6 +318,11 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
         ("true", "d91a72f4b308", "d91a72f4b308", 1, False, "e04b75ad6312"),
         ("false", "d91a72f4b308", "e04b75ad6312", 1, False, "e04b75ad6312"),
         ("true", "d91a72f4b308", "e04b75ad6312", 1, False, "d91a72f4b308"),
+        ("true", "a85c2f87d019", "c2b8e0364a21", 0, True, "c2b8e0364a21"),
+        ("true", "c2b8e0364a21", "c2b8e0364a21", 0, False, "c2b8e0364a21"),
+        ("true", "e04b75ad6312", "c2b8e0364a21", 1, False, "c2b8e0364a21"),
+        ("false", "a85c2f87d019", "c2b8e0364a21", 1, False, "c2b8e0364a21"),
+        ("true", "a85c2f87d019", "c2b8e0364a21", 1, False, ""),
     ],
 )
 def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded, reviewed):
@@ -360,6 +365,8 @@ sudo() {
 @pytest.mark.parametrize(
     "event,target,expected",
     [
+        ("push", "c2b8e0364a21", "false:"),
+        ("workflow_dispatch", "c2b8e0364a21", "true:c2b8e0364a21"),
         ("push", "f8b24d0c51e3", "false:"),
         ("push", "a3e6b18d4092", "false:"),
         ("push", "c74d219e8a60", "false:"),
@@ -412,7 +419,10 @@ def test_image_prompt_reviewed_migration_is_available_in_manual_workflow_choices
 
 @pytest.mark.parametrize(
     "reviewed,expected",
-    [("d91a72f4b308", 0), ("e04b75ad6312", 0), ("b6f20a93d812", 0), ("ffffffffffff", 1)],
+    [
+        ("d91a72f4b308", 0), ("e04b75ad6312", 0), ("b6f20a93d812", 0),
+        ("c2b8e0364a21", 0), ("ffffffffffff", 1),
+    ],
 )
 def test_wechat_reviewed_argument_checked_before_server_access(reviewed, expected):
     import subprocess
@@ -560,3 +570,9 @@ timeout() { shift; "$@"; }
     assert "verified-source-guard" in call
     assert "--code upstream_unavailable" in call
     assert "--attempt-at" in call
+
+
+def test_miniprogram_reviewed_migration_is_available_in_workflow_choices():
+    source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    choices = source.split("        options:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "          - c2b8e0364a21\n" in choices + "\n"

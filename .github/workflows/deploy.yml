@@ -19,6 +19,7 @@ on:
           - e04b75ad6312
           - b6f20a93d812
           - a85c2f87d019
+          - c2b8e0364a21
 permissions:
   contents: read
 concurrency:
@@ -129,7 +130,7 @@ jobs:
           scp "${ssh_options[@]}" release/release.tar.gz release/admin.tar.gz release/update-backend.sh "$remote:/opt/aigc-prompt/releases/$release/"
           migrate=false
           reviewed_target=
-          if [[ "$DEPLOY_EVENT" == workflow_dispatch && ( "$REVIEWED_MIGRATION" == f8b24d0c51e3 || "$REVIEWED_MIGRATION" == a3e6b18d4092 || "$REVIEWED_MIGRATION" == c74d219e8a60 || "$REVIEWED_MIGRATION" == d91a72f4b308 || "$REVIEWED_MIGRATION" == e04b75ad6312 || "$REVIEWED_MIGRATION" == b6f20a93d812 || "$REVIEWED_MIGRATION" == a85c2f87d019 ) ]]; then
+          if [[ "$DEPLOY_EVENT" == workflow_dispatch && ( "$REVIEWED_MIGRATION" == f8b24d0c51e3 || "$REVIEWED_MIGRATION" == a3e6b18d4092 || "$REVIEWED_MIGRATION" == c74d219e8a60 || "$REVIEWED_MIGRATION" == d91a72f4b308 || "$REVIEWED_MIGRATION" == e04b75ad6312 || "$REVIEWED_MIGRATION" == b6f20a93d812 || "$REVIEWED_MIGRATION" == a85c2f87d019 || "$REVIEWED_MIGRATION" == c2b8e0364a21 ) ]]; then
             migrate=true
             reviewed_target="$REVIEWED_MIGRATION"
           fi
