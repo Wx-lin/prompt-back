@@ -33,6 +33,10 @@ admin_switched=false
 timer_was_active=false
 prompt_worker_was_running=false
 prompt_worker_resume_attempted=false
+worker_rollback_unsafe=${TEST_UNSAFE:-false}
+reviewed_migration=
+[[ "$worker_rollback_unsafe" != true ]] || reviewed_migration=e81d4a9b216f
+migration_started=${TEST_MIGRATION_STARTED:-false}
 printf '%s' old-image > tag-image
 printf '%s' old-image > api-image
 printf '%s' old-image > worker-image
@@ -64,16 +68,20 @@ sudo() {
         'compose -f compose.yml -f backup/rollback.yml up -d --no-deps --no-build api')
             cp tag-image api-image ;;
         'compose exec -T gateway nginx -s reload') return 0 ;;
+        'compose exec -T postgres psql -U aigc -d aigc_prompt -Atc SELECT version_num FROM alembic_version')
+            [[ "$TEST_DB_REVISION" != unavailable ]] || return 92
+            printf '%s\n' "$TEST_DB_REVISION" ;;
         *) printf 'Unexpected Docker call: %s\n' "$*" >&2; return 91 ;;
     esac
 }
 """
 
 
-def execute(tmp_path, state, mode="success"):
+def execute(tmp_path, state, mode="success", unsafe=False, db_revision="c2b8e0364a21", migration=False):
     exercise = r"""
 trap finish EXIT
 pause_prompt_worker
+if [[ "$TEST_MODE" == pre-migration-failure ]]; then exit 17; fi
 printf 'build\n' >> calls
 printf new-image > tag-image
 printf new-image > api-image
@@ -85,7 +93,8 @@ success=true
     result = subprocess.run(
         ["bash", "-c", MOCK_DOCKER + shell_functions() + exercise],
         cwd=tmp_path,
-        env={**os.environ, "TEST_STATE": state, "TEST_MODE": mode},
+        env={**os.environ, "TEST_STATE": state, "TEST_MODE": mode, "TEST_UNSAFE": str(unsafe).lower(),
+             "TEST_DB_REVISION": db_revision, "TEST_MIGRATION_STARTED": str(migration).lower()},
         capture_output=True,
         text=True,
     )
@@ -125,6 +134,31 @@ def test_failed_deploy_restores_old_api_tag_and_running_worker(tmp_path, mode):
     restore = "compose -f compose.yml -f backup/rollback.yml up -d --no-deps --no-build api"
     worker_start = "compose --profile image-prompt up -d --no-deps --no-build prompt-analysis-worker"
     assert calls.index(restore) < len(calls) - 1 - calls[::-1].index(worker_start)
+
+
+@pytest.mark.parametrize("mode", ["deploy-failure", "up-failure", "wrong-image"])
+def test_generated_image_schema_never_resumes_old_worker_on_failure(tmp_path, mode):
+    result, _ = execute(tmp_path, "running", mode, unsafe=True)
+    assert result.returncode != 0
+    assert (tmp_path / "api-image").read_text() == "old-image"
+    assert (tmp_path / "worker-running").read_text() == "false"
+    assert "worker remains stopped" in result.stderr
+
+
+@pytest.mark.parametrize("revision,migration,should_resume", [
+    ("c2b8e0364a21", False, True),
+    ("d93c70f6b321", False, False),
+    ("e81d4a9b216f", False, False),
+    ("unavailable", False, False),
+    ("c2b8e0364a21", True, False),
+])
+def test_early_failure_resumes_old_worker_only_on_confirmed_unchanged_schema(
+    tmp_path, revision, migration, should_resume
+):
+    result, _ = execute(tmp_path, "running", "pre-migration-failure", unsafe=True,
+                        db_revision=revision, migration=migration)
+    assert result.returncode != 0
+    assert (tmp_path / "worker-running").read_text() == str(should_resume).lower()
 
 
 def test_stop_failure_never_reaches_build_or_api_switch(tmp_path):

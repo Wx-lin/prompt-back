@@ -20,11 +20,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import Settings, get_settings
 from app.database import get_db
 from app.redis import get_redis_client
-from app.routers import prompt_analyses, prompt_conversations
+from app.routers import character_assets, prompt_analyses, prompt_conversations
 from app.schemas.prompt_conversation import PromptAssetImport
 from app.utils.deps import get_current_user
 from app.utils.prompt_analysis_http import PromptAnalysisBoundary, PromptAnalysisRoute, error_response
 from scripts.local_prompt_preview_source import PreviewSource, mirror_public_prompt, mirror_user
+from scripts.local_unlimited_character_preview import create_local_character_router
 
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 HOSTS = frozenset({"127.0.0.1:8040", "localhost:8040", "[::1]:8040"})
@@ -139,6 +140,8 @@ def create_app(settings: Settings | None = None, *, transport=None):
         )
     )
     app.include_router(prompt_analyses.router)
+    app.include_router(character_assets.router)
+    app.include_router(create_local_character_router(settings))
 
     @app.get("/health")
     async def health():

@@ -7,7 +7,12 @@ import math
 from pydantic import TypeAdapter, ValidationError
 
 from app.schemas.prompt_analysis import ModelResult
-from app.schemas.prompt_conversation import ConversationContext, ConversationReplyResult
+from app.schemas.prompt_conversation import (
+    ConversationContext,
+    ConversationImageIntent,
+    ConversationImageQuestion,
+    ConversationReplyResult,
+)
 from app.services.vision import adapter
 
 CHAT_PROMPT_VERSION = "chat-v2"
@@ -15,10 +20,24 @@ CHAT_PROMPT_VERSION = "chat-v2"
 
 def _system_prompt(mode: str) -> str:
     schema = (
-        ModelResult.model_json_schema() if mode == "generate"
+        TypeAdapter(
+            ModelResult | ConversationReplyResult | ConversationImageIntent | ConversationImageQuestion
+        ).json_schema()
+        if mode == "smart" else ModelResult.model_json_schema() if mode == "generate"
         else TypeAdapter(ModelResult | ConversationReplyResult).json_schema()
     )
     intent = (
+        "本轮mode=smart：根据语义理解用户意图，不依赖固定关键词。"
+        "用户描述想要的画面、要求生图或修改图片时，返回schema_version=image-intent-1，"
+        "无需输出图片内容；必须填写布尔字段use_reference。用户要求修改已有图或基于参考图创作时为true；"
+        "用户要求创作无关的新画面时为false；没有参考图时为false。有参考图且没有文字也默认生图并使用参考图。"
+        "必须独立填写use_context布尔值：用户要求依据前文、之前的提示词或延续此前画面则为true；"
+        "用户要求生成独立无关的新画面则为false。不要将不同图片或不相关的历史要求混入新图。"
+        "用户明确要求写、解释或修改提示词时返回schema_version=1提示词。"
+        "用户问候、闲聊、咨询、提问或讨论而非要求生图时返回schema_version=reply-1自然回复。"
+        "如果只知道context.has_generated_image=true而未收到图像，用户询问上一张图片内容时必须返回"
+        "schema_version=image-question-1请求查看原图，绝不能假装看过或猜测图像内容。"
+        if mode == "smart" else
         "本轮mode=generate：必须输出schema_version=1的完整中英文生图提示词与双语画面拆解，"
         "不得返回reply-1闲聊回复。"
         if mode == "generate" else
@@ -50,21 +69,26 @@ async def generate_conversation(
     adapter.require_vision_configuration()
     if (
         not isinstance(message, str)
-        or mode not in ("auto", "generate")
+        or mode not in ("auto", "generate", "smart")
         or len(message) > 500
         or not (message.strip() or image)
         or not isinstance(timeout, (int, float))
         or isinstance(timeout, bool)
         or not math.isfinite(timeout)
         or timeout <= 0
-        or (image is not None and (not isinstance(image, bytes) or not 0 < len(image) <= 2 * 1024 * 1024))
+        or (image is not None and (not isinstance(image, bytes) or not 0 < len(image) <= 5 * 1024 * 1024))
     ):
         raise adapter.VisionError("model_invalid_input")
     try:
-        context = ConversationContext.model_validate(context).model_dump() if context is not None else None
+        context = (
+            ConversationContext.model_validate(context).model_dump(
+                exclude={"has_generated_image"} if mode != "smart" else set()
+            )
+            if context is not None else None
+        )
     except ValidationError:
         raise adapter.VisionError("model_invalid_input") from None
-    mode = "generate" if image is not None and not message.strip() else mode
+    mode = "generate" if mode == "auto" and image is not None and not message.strip() else mode
     settings = adapter.get_settings()
     options = (
         {"max_completion_tokens": settings.prompt_vision_max_tokens, "extra_body": {"enable_thinking": False}}
@@ -72,6 +96,10 @@ async def generate_conversation(
         else {"max_tokens": settings.prompt_vision_max_tokens}
     )
     payload = json.dumps({"message": message, "context": context, "mode": mode}, ensure_ascii=False)
+    image_prefix = (
+        "data:image/png;base64," if image and image.startswith(b"\x89PNG\r\n\x1a\n")
+        else "data:image/jpeg;base64,"
+    )
     content = (
         payload
         if image is None
@@ -79,7 +107,7 @@ async def generate_conversation(
             {"type": "text", "text": payload},
             {
                 "type": "image_url",
-                "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(image).decode("ascii")},
+                "image_url": {"url": image_prefix + base64.b64encode(image).decode("ascii")},
             },
         ]
     )
@@ -108,4 +136,4 @@ async def generate_conversation(
             raise adapter.VisionError("model_upstream_error", uncertain=exc.status_code >= 500) from None
         except (adapter.APIResponseValidationError, json.JSONDecodeError):
             raise adapter.VisionError("model_invalid_output") from None
-    return adapter._parse_response(response, allow_reply=mode == "auto")
+    return adapter._parse_response(response, allow_reply=mode == "auto", allow_image_intent=mode == "smart")

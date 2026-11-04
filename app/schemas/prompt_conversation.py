@@ -16,13 +16,23 @@ class ConversationInput(BaseModel):
         | None
     ) = None
     asset_id: UUID | None = None
-    mode: Literal["auto", "generate"] = "auto"
+    generated_image_id: UUID | None = None
+    mode: Literal["auto", "generate", "image", "smart"] = "auto"
 
     @model_validator(mode="after")
     def require_input(self):
         if self.message is None and self.asset_id is None:
             raise ValueError("An idea or reference image is required")
+        if self.generated_image_id and (self.mode not in {"image", "smart"} or self.asset_id is not None):
+            raise ValueError("Generated references require image mode and cannot be combined with an upload")
         return self
+
+
+class ConversationImageResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal["image-1"]
+    title: Annotated[str, Field(min_length=1, max_length=80)]
+    asset_id: UUID
 
 
 class ConversationMessage(ConversationInput):
@@ -50,6 +60,18 @@ class ConversationReplyResult(BaseModel):
     reply: Annotated[str, Field(min_length=1, max_length=4000, pattern=r"\S")]
 
 
+class ConversationImageIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    schema_version: Literal["image-intent-1"]
+    use_reference: bool
+    use_context: bool
+
+
+class ConversationImageQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    schema_version: Literal["image-question-1"]
+
+
 class ConversationDialogue(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
@@ -66,3 +88,4 @@ class ConversationContext(BaseModel):
     source_type: Literal["image", "text"] | None = None
     recent_messages: Annotated[list[Annotated[str, Field(max_length=500)]], Field(max_length=6)]
     recent_dialogue: Annotated[list[ConversationDialogue], Field(max_length=6)] = Field(default_factory=list)
+    has_generated_image: bool = False

@@ -7,7 +7,7 @@ migrate=${3:-false}
 admin_hash=${4:-}
 auto_migration=${5:-}
 reviewed_migration=${6:-}
-[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 || "$reviewed_migration" == e04b75ad6312 || "$reviewed_migration" == b6f20a93d812 || "$reviewed_migration" == a85c2f87d019 || "$reviewed_migration" == c2b8e0364a21 ]] || {
+[[ -z "$reviewed_migration" || "$reviewed_migration" == f8b24d0c51e3 || "$reviewed_migration" == a3e6b18d4092 || "$reviewed_migration" == c74d219e8a60 || "$reviewed_migration" == d91a72f4b308 || "$reviewed_migration" == e04b75ad6312 || "$reviewed_migration" == b6f20a93d812 || "$reviewed_migration" == a85c2f87d019 || "$reviewed_migration" == c2b8e0364a21 || "$reviewed_migration" == e81d4a9b216f ]] || {
     echo 'Unknown reviewed migration; stopped' >&2
     exit 1
 }
@@ -53,6 +53,10 @@ old_id=
 old_reference=
 prompt_worker_was_running=false
 prompt_worker_resume_attempted=false
+worker_rollback_unsafe=false
+migration_started=false
+# Once the generated-image release is authorized, do not revive an older worker on failure.
+[[ "$reviewed_migration" != e81d4a9b216f ]] || worker_rollback_unsafe=true
 pause_prompt_worker() {
     local services container running
     services=$(sudo -n docker compose --profile image-prompt config --services) || return 1
@@ -118,7 +122,21 @@ finish() {
         sudo -n docker compose exec -T gateway nginx -s reload
     fi
     if [[ "$success" != true && "${prompt_worker_was_running:-false}" == true ]]; then
-        resume_prompt_worker "$old_id" || code=1
+        if [[ "${worker_rollback_unsafe:-false}" == true ]]; then
+            # Before migration, a confirmed c2 database cannot contain new output assets.
+            # A failed query or any attempt to migrate must leave the worker stopped.
+            db_revision=
+            if [[ "${migration_started:-false}" == false && "$switched" == false && "${reviewed_migration:-}" == e81d4a9b216f ]]; then
+                db_revision=$(sudo -n docker compose exec -T postgres psql -U aigc -d aigc_prompt -Atc 'SELECT version_num FROM alembic_version' 2>/dev/null) || db_revision=
+            fi
+            if [[ "$db_revision" == c2b8e0364a21 ]]; then
+                resume_prompt_worker "$old_id" || code=1
+            else
+                echo 'Generated-image data may exist; old worker remains stopped for safe recovery.' >&2
+            fi
+        else
+            resume_prompt_worker "$old_id" || code=1
+        fi
     fi
     if [[ "$timer_was_active" == true ]]; then
         sudo -n systemctl start aigc-crawl.timer || code=1
@@ -194,6 +212,13 @@ sudo -n docker compose run --rm --no-deps -T api alembic heads > "$backup/heads"
 current=$(awk '/^[0-9a-f]+([[:space:]]|$)/ {print $1}' "$backup/revision.after")
 heads=$(awk '/\(head\)/ {print $1}' "$backup/heads")
 [[ "$heads" =~ ^[0-9a-f]+$ ]] || { echo 'Expected one migration head; deployment stopped'; exit 1; }
+if [[ "$heads" == e81d4a9b216f ]]; then
+    worker_rollback_unsafe=true
+    if [[ "$current" != "$heads" && ( "$migrate" != true || "$reviewed_migration" != e81d4a9b216f ) ]]; then
+        echo 'Character and generated-image migrations require explicit reviewed dispatch; stopped' >&2
+        exit 1
+    fi
+fi
 if [[ "$heads" == a85c2f87d019 && "$current" != "$heads" && ( "$migrate" != true || "$reviewed_migration" != a85c2f87d019 ) ]]; then
     echo 'Prompt conversation merge requires explicit reviewed dispatch; stopped' >&2
     exit 1
@@ -203,6 +228,7 @@ if [[ "$heads" == c2b8e0364a21 && "$current" != "$heads" && ( "$migrate" != true
     exit 1
 fi
 if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
+    reviewed_intermediate=
     case "$reviewed_migration" in
         f8b24d0c51e3) reviewed_parent=e7a13c9b40d2 ;;
         a3e6b18d4092) reviewed_parent=9c35e1a62f4 ;;
@@ -212,9 +238,10 @@ if [[ "$migrate" == true && -n "$reviewed_migration" ]]; then
         b6f20a93d812) reviewed_parent=e04b75ad6312 ;;
         a85c2f87d019) reviewed_parent=b6f20a93d812 ;;
         c2b8e0364a21) reviewed_parent=a85c2f87d019 ;;
+        e81d4a9b216f) reviewed_parent=c2b8e0364a21; reviewed_intermediate=d93c70f6b321 ;;
         *) echo "Unknown reviewed migration; stopped"; exit 1 ;;
     esac
-    [[ "$heads" == "$reviewed_migration" && ( "$current" == "$reviewed_parent" || "$current" == "$heads" ) ]] || {
+    [[ "$heads" == "$reviewed_migration" && ( "$current" == "$reviewed_parent" || "$current" == "$heads" || ( -n "$reviewed_intermediate" && "$current" == "$reviewed_intermediate" ) ) ]] || {
         echo 'Reviewed dispatch migration does not match the database parent and release head; stopped'
         exit 1
     }
@@ -230,6 +257,7 @@ if [[ "$current" != "$heads" ]]; then
     fi
     echo "Applying reviewed migration (${current:-base} -> $heads) with the new image."
     # Database backup is already validated. Never migrate with the old running API image.
+    migration_started=true
     sudo -n docker compose run --rm --no-deps -T api alembic upgrade head > "$backup/migration.log" 2>&1 || {
         tail -40 "$backup/migration.log"
         echo 'Migration failed. Backend not switched; database is not automatically downgraded.'

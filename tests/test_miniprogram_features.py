@@ -158,3 +158,34 @@ def test_rate_limit_applies_before_admin_authentication():
     response = TestClient(app).get("/api/admin/miniprogram/features")
     assert response.status_code == 429
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_gateway_only_exposes_read_only_public_switch():
+    import re
+    from pathlib import Path
+
+    config = (Path(__file__).resolve().parents[1] / "deploy/mini-api-gateway/http.conf").read_text()
+    patterns = re.findall(r'"~(.*?)" 1;', config)
+
+    def allowed(method, path):
+        return any(re.fullmatch(pattern, method + ":/mini-api" + path) for pattern in patterns)
+
+    assert not allowed("GET", "/api/miniprogram/features")
+    assert not allowed("PUT", "/api/miniprogram/features")
+    assert not allowed("GET", "/api/admin/miniprogram/features")
+
+
+def test_upgrade_from_existing_gateway_fragments():
+    import importlib.util
+    from pathlib import Path
+
+    base = Path(__file__).resolve().parents[1] / "deploy/mini-api-gateway"
+    spec = importlib.util.spec_from_file_location("mini_gateway_release", base / "release.py")
+    gateway = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gateway)
+    from tests.test_mini_api_gateway import deployed_config
+
+    original, previous = deployed_config()
+    updated = gateway.merge(previous)
+    assert "/mini-api/api/miniprogram/features" not in updated
+    assert gateway.remove(updated) == original

@@ -14,9 +14,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import get_settings
 from app.models import PromptAnalysis, PromptAnalysisAsset, PromptAnalysisAttempt
 from app.services.vision.conversation_adapter import CHAT_PROMPT_VERSION
+from app.services.vision.image_adapter import MODEL as IMAGE_MODEL
+from app.services.vision.image_adapter import PROMPT_VERSION as IMAGE_VERSION
 from app.services.vision.text_adapter import TEXT_PROMPT_VERSION
 
 Sessions = async_sessionmaker[AsyncSession]
+
+
+def execution_timeout(job, settings):
+    return (settings.prompt_image_execution_timeout
+            if job.config_snapshot.get("conversation_mode") in {"image", "smart"}
+            else settings.prompt_analysis_execution_timeout)
 
 
 @dataclass(frozen=True)
@@ -33,6 +41,8 @@ class ClaimedJob:
     user_message: str | None = None
     context_snapshot: dict | None = None
     conversation_mode: str = "auto"
+    user_id: uuid.UUID | None = None
+    selected_generated_image: bool = False
 
 
 async def _clock(db: AsyncSession) -> datetime:
@@ -129,6 +139,8 @@ async def claim_job(sessions: Sessions) -> ClaimedJob | None:
                     job.input_type, job.idea_text, job.purpose, job.style,
                     job.conversation_id, job.user_message, job.context_snapshot,
                     job.config_snapshot.get("conversation_mode", "auto"),
+                    job.user_id,
+                    bool(job.config_snapshot.get("selected_generated_image")),
                 )
     return None
 
@@ -157,6 +169,7 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
         if job.input_type == "text" and not job.idea_text:
             _terminal(job, now, status="failed", quota="released", error="input_unavailable")
             return False
+        image_mode = job.config_snapshot.get("conversation_mode") == "image"
         expected = {
             "provider": settings.prompt_vision_provider,
             "model": settings.prompt_vision_model,
@@ -168,6 +181,11 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
             "base_url": settings.prompt_vision_base_url,
             "enable_thinking": False if settings.prompt_vision_provider == "dashscope" else None,
         }
+        if image_mode:
+            expected = {
+                "provider": "openai-image", "model": IMAGE_MODEL, "prompt_version": IMAGE_VERSION,
+                "base_url": "https://api.openai.com/v1",
+            }
         snapshot_changed = any(
             key in job.config_snapshot and job.config_snapshot[key] != value
             for key, value in expected.items()
@@ -188,7 +206,7 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
         ).all()
         if attempts:
             return False
-        if job.started_at + timedelta(seconds=settings.prompt_analysis_execution_timeout) <= now:
+        if job.started_at + timedelta(seconds=execution_timeout(job, settings)) <= now:
             _terminal(job, now, status="failed", quota="released", error="execution_timeout")
             return False
         db.add(
@@ -199,8 +217,33 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
                 dispatched_at=now,
             )
         )
-        job.phase = "generating" if job.input_type == "text" else "analyzing"
+        job.phase = "thinking" if job.config_snapshot.get("conversation_mode") == "smart" else (
+            "generating" if job.input_type == "text" else "analyzing"
+        )
         return True
+
+
+async def mark_smart_image(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.UUID) -> bool:
+    """Fence the second provider call under the existing durable dispatch intent."""
+    async with sessions() as db, db.begin():
+        job = await db.scalar(select(PromptAnalysis).where(PromptAnalysis.id == job_id).with_for_update())
+        now = await _clock(db)
+        if not _valid_lease(job, lease_token, now) or job.deleted_at:
+            return False
+        if job.config_snapshot.get("conversation_mode") != "smart" or job.phase != "thinking":
+            return False
+        job.config_snapshot = {**job.config_snapshot, "smart_image": True}
+        job.phase = "generating"
+        return True
+
+
+async def smart_followup_allowed(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.UUID) -> bool:
+    """Fence an optional second vision call after intent classification."""
+    async with sessions() as db, db.begin():
+        job = await db.scalar(select(PromptAnalysis).where(PromptAnalysis.id == job_id).with_for_update())
+        now = await _clock(db)
+        return bool(_valid_lease(job, lease_token, now) and not job.deleted_at
+                    and job.config_snapshot.get("conversation_mode") == "smart" and job.phase == "thinking")
 
 
 async def heartbeat_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.UUID) -> bool:
@@ -210,7 +253,7 @@ async def heartbeat_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid
         now = await _clock(db)
         if not _valid_lease(job, lease_token, now):
             return False
-        deadline = job.started_at + timedelta(seconds=settings.prompt_analysis_execution_timeout)
+        deadline = job.started_at + timedelta(seconds=execution_timeout(job, settings))
         if deadline <= now:
             return False
         job.lease_expires_at = min(
@@ -222,16 +265,17 @@ async def heartbeat_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid
 
 def _result_parts(result, *, allow_reply=False):
     from app.schemas.prompt_analysis import ModelResult
-    from app.schemas.prompt_conversation import ConversationReplyResult
+    from app.schemas.prompt_conversation import ConversationImageResult, ConversationReplyResult
 
     content = getattr(result, "result", result)
     if isinstance(content, (ModelResult, ConversationReplyResult)):
         content = content.model_dump(mode="json")
-    schema = (
-        ConversationReplyResult
-        if allow_reply and isinstance(content, dict) and content.get("schema_version") == "reply-1"
-        else ModelResult
-    )
+    if isinstance(content, dict) and content.get("schema_version") == "image-1":
+        schema = ConversationImageResult
+    elif allow_reply and isinstance(content, dict) and content.get("schema_version") == "reply-1":
+        schema = ConversationReplyResult
+    else:
+        schema = ModelResult
     validated = schema.model_validate(content).model_dump(mode="json")
     provider_id = getattr(result, "provider_request_id", None)
     raw_usage = getattr(result, "usage", {})
@@ -261,15 +305,35 @@ async def finish_job(
 ) -> bool:
     """Atomically store a locally validated result and its successful state."""
     async with sessions() as db, db.begin():
+        # Serialize binding with conversation deletion before taking asset/job locks.
+        from app.services.prompt_analysis.api import budget_lock
+        await budget_lock(db)
+        output_asset = None
+        if isinstance(result, dict) and result.get("schema_version") == "image-1":
+            try:
+                output_id = uuid.UUID(str(result.get("asset_id")))
+            except ValueError:
+                output_id = None
+            if output_id:
+                output_asset = await db.scalar(
+                    select(PromptAnalysisAsset).where(PromptAnalysisAsset.id == output_id).with_for_update()
+                )
         job = await db.scalar(select(PromptAnalysis).where(PromptAnalysis.id == job_id).with_for_update())
         now = await _clock(db)
         if not _valid_lease(job, lease_token, now):
             return False
+        if isinstance(result, dict) and result.get("schema_version") == "image-1" and (
+            (job.config_snapshot.get("conversation_mode") != "image"
+             and not (job.config_snapshot.get("conversation_mode") == "smart"
+                      and job.config_snapshot.get("smart_image")))
+            or output_asset is None or output_asset.user_id != job.user_id or output_asset.state != "ready"
+        ):
+            result, error_code = None, "image_invalid_output"
         try:
             parts = _result_parts(
                 result,
                 allow_reply=bool(job.conversation_id)
-                and job.config_snapshot.get("conversation_mode", "auto") == "auto",
+                and job.config_snapshot.get("conversation_mode", "auto") in {"auto", "smart"},
             ) if result is not None else None
         except (ValueError, TypeError):
             # Invalid output is a known failure, not a persistence outage or a
@@ -287,6 +351,8 @@ async def finish_job(
         quota = "uncertain" if uncertain else ("consumed" if attempt is not None else "released")
         if parts is not None and not job.deleted_at:
             job.generated_result = parts[0]
+            if output_asset is not None:
+                job.output_asset_id = output_asset.id
         _terminal(job, now, status=status, quota=quota, error=error_code)
         if attempt is not None:
             attempt.dispatch_state = status

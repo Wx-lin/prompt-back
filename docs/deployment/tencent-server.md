@@ -143,3 +143,9 @@ python3 scripts/deploy_backend.py
 手动触发恢复：`launchctl kickstart gui/$(id -u)/com.aigc-prompt.database-tunnel`。关闭自动恢复：`launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.aigc-prompt.database-tunnel.plist`，再关闭该服务state.json所指的专用SSH master；不要关闭其他工作会话。
 
 已验证：修复前15432无监听；恢复后pg_isready成功，Chat2DB显示“测试连接成功”，public下18张表可展开、users已有4行可读取。执行专用隧道断线模拟后检查自动恢复，不影响生产API或其他SSH会话。
+
+### 小程序创作入口开关
+
+后端迁移 `c2b8e0364a21` 新增持久化设置，初始为关闭。小程序通过已开放网关的 `GET /api/prompt-examples?features=1` 读取响应 `data.creation_enabled`，该响应禁止缓存；获取失败时客户端应保持关闭。这个开关只控制支持该配置的小程序版本的入口，不会自动改变旧版本，也不会关闭网站共用的生成 API。
+
+使用已有管理员鉴权访问后端的 `GET /api/admin/miniprogram/features` 查看状态，或向同一路径发送 `PUT`，请求头按既有管理接口提供 `X-Admin-Key`，JSON 请求体为 `{"creation_enabled": false}`（关闭）或 `{"creation_enabled": true}`（开启）。字段必须是布尔值；修改持久化后无需重启。管理员接口不得通过小程序网关公开，也不得把密钥写入客户端或文档。配置开关生效依赖数据库迁移、后端和包含开关逻辑的小程序版本；各步骤需要分别验收。

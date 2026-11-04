@@ -1,9 +1,12 @@
 """Private upload ownership, bounded normalization and preview renewal."""
 
 import asyncio
+import hashlib
+import io
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from PIL import Image
 from sqlalchemy import exists, or_, select
 
 from app.config import get_settings
@@ -36,7 +39,7 @@ async def is_available(db, asset, now=None):
         await db.scalar(
             select(
                 exists().where(
-                    PromptAnalysis.asset_id == asset.id,
+                    or_(PromptAnalysis.asset_id == asset.id, PromptAnalysis.output_asset_id == asset.id),
                     PromptAnalysis.deleted_at.is_(None),
                     or_(
                         PromptAnalysis.image_retain_until > now,
@@ -141,3 +144,41 @@ async def store_upload(db, user_id, file):
         )
         # The durable uploading record remains discoverable if compensation fails.
         raise AnalysisError(503, "STORAGE_UNAVAILABLE", "图片上传失败，请稍后重试") from None
+
+
+async def store_generated(db, user_id, body):
+    """Preserve the validated original PNG, including alpha; thumbnails are JPEG."""
+    try:
+        async with asyncio.timeout(10):
+            async with _decode_lock:
+                try:
+                    prepared = await asyncio.to_thread(prepare_analysis_image, body, "image/png")
+                    with Image.open(io.BytesIO(body)) as image:
+                        width, height = image.size
+                except ValueError:
+                    raise AnalysisError(502, "IMAGE_INVALID", "生成图片无法读取") from None
+    except TimeoutError:
+        raise AnalysisError(503, "UPLOAD_BUSY", "图片处理中，请稍后重试") from None
+    asset_id = uuid.uuid4()
+    asset = PromptAnalysisAsset(
+        id=asset_id, user_id=user_id, object_key=f"prompt-analysis/{asset_id.hex}/image.png",
+        thumbnail_key=f"prompt-analysis/{asset_id.hex}/thumb.jpg", sha256=hashlib.sha256(body).hexdigest(),
+        width=width, height=height, byte_size=len(body), state="uploading",
+        unbound_expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    db.add(asset)
+    object_key, thumbnail_key = asset.object_key, asset.thumbnail_key
+    await db.commit()
+    try:
+        await storage.put_private(body, object_key)
+        await storage.put_private(prepared.thumbnail_bytes, thumbnail_key)
+        asset.state = "ready"
+        await db.commit()
+        return str(asset_id)
+    except Exception:
+        await db.rollback()
+        await asyncio.gather(
+            storage.delete_private(object_key), storage.delete_private(thumbnail_key),
+            return_exceptions=True,
+        )
+        raise AnalysisError(503, "STORAGE_UNAVAILABLE", "图片保存失败，请稍后重试") from None

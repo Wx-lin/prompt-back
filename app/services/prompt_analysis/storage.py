@@ -49,18 +49,30 @@ def require_storage_configuration() -> None:
 async def put_private(body: bytes, object_key: str) -> None:
     require_storage_configuration()
     with _private_sdk_operation():
-        await cos_service.upload_submission_image(body, object_key)
+        if object_key.endswith(".png"):
+            await cos_service.upload_submission_image(body, object_key, content_type="image/png")
+        else:
+            await cos_service.upload_submission_image(body, object_key)
 
 
 async def read_private(object_key: str) -> bytes:
+    return await _read_private_with_limit(object_key, 2 * 1024 * 1024)
+
+
+async def read_generated(object_key: str) -> bytes:
+    """Read an owned generated PNG with its separate five MiB limit."""
+    return await _read_private_with_limit(object_key, 5 * 1024 * 1024)
+
+
+async def _read_private_with_limit(object_key: str, maximum: int) -> bytes:
     require_storage_configuration()
 
     def read():
         response = cos_service._build_client().get_object(Bucket=get_settings().cos_bucket, Key=object_key)
         stream = response["Body"].get_raw_stream()
         try:
-            body = stream.read(2 * 1024 * 1024 + 1)
-            if not body or len(body) > 2 * 1024 * 1024:
+            body = stream.read(maximum + 1)
+            if not body or len(body) > maximum:
                 raise ValueError("Invalid stored image size")
             return body
         finally:

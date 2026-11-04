@@ -22,6 +22,8 @@ from app.routers import (
     admin_submissions,
     auth,
     categories,
+    character_assets,
+    character_preview,
     crawl_operations,
     miniprogram_features,
     model_catalog,
@@ -85,6 +87,8 @@ app.include_router(prompts.router)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(categories.router)
+app.include_router(character_assets.router)
+app.include_router(character_preview.router)
 app.include_router(model_catalog.router)
 app.include_router(miniprogram_features.router)
 app.include_router(search.router)

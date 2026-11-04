@@ -18,9 +18,16 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.config import get_settings
 from app.schemas.prompt_analysis import ModelResult
-from app.schemas.prompt_conversation import ConversationReplyResult
+from app.schemas.prompt_conversation import (
+    ConversationImageIntent,
+    ConversationImageQuestion,
+    ConversationReplyResult,
+)
 
 _CONVERSATION_RESULT = TypeAdapter(ModelResult | ConversationReplyResult)
+_SMART_RESULT = TypeAdapter(
+    ModelResult | ConversationReplyResult | ConversationImageIntent | ConversationImageQuestion
+)
 
 
 class VisionError(Exception):
@@ -34,7 +41,7 @@ class VisionError(Exception):
 
 @dataclass(frozen=True)
 class VisionResult:
-    result: ModelResult | ConversationReplyResult
+    result: ModelResult | ConversationReplyResult | ConversationImageIntent | ConversationImageQuestion
     provider_request_id: str | None
     usage: dict
     model: str | None = None
@@ -97,7 +104,7 @@ def _safe_usage(usage) -> dict:
     }
 
 
-def _parse_response(response, *, allow_reply: bool = False) -> VisionResult:
+def _parse_response(response, *, allow_reply: bool = False, allow_image_intent: bool = False) -> VisionResult:
     try:
         choice = response.choices[0]
         if choice.message.refusal or choice.finish_reason == "content_filter":
@@ -105,6 +112,7 @@ def _parse_response(response, *, allow_reply: bool = False) -> VisionResult:
         if choice.finish_reason != "stop" or not choice.message.content:
             raise VisionError("model_invalid_output")
         result = (
+            _SMART_RESULT.validate_json(choice.message.content) if allow_image_intent else
             _CONVERSATION_RESULT.validate_json(choice.message.content)
             if allow_reply else ModelResult.model_validate_json(choice.message.content)
         )

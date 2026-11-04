@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     # app/services/content_review_service.py 和 docs/aigc-prompt-内容审核方案.md。
     dashscope_api_key: str = ""
 
+    # Character preview: server-side only. No default credential.
+    openai_api_key: SecretStr = SecretStr("")
+    character_preview_user_daily_limit: int = Field(default=10, ge=1, le=10000)
+    character_preview_global_daily_limit: int = Field(default=100, ge=1, le=1000000)
+
     # Private image-to-prompt feature. No fallback to the gallery moderation key.
     prompt_analysis_enabled: bool = False
     prompt_analysis_worker_enabled: bool = False
@@ -124,6 +129,8 @@ class Settings(BaseSettings):
     prompt_analysis_heartbeat_seconds: int = Field(default=15, ge=1, le=60)
     prompt_analysis_call_timeout: float = Field(default=60, ge=1, le=120)
     prompt_analysis_execution_timeout: int = Field(default=120, ge=10, le=600)
+    prompt_image_call_timeout: int = Field(default=180, ge=10, le=300)
+    prompt_image_execution_timeout: int = Field(default=240, ge=30, le=600)
     prompt_analysis_queue_ttl_seconds: int = Field(default=300, ge=10, le=3600)
 
     @field_validator("prompt_vision_base_url")

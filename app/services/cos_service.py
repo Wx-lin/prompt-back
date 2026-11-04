@@ -171,13 +171,13 @@ async def upload_author_avatar(remote_url: str) -> str:
     return await asyncio.to_thread(_upload_bytes_sync, b"".join(chunks), object_key, content_type)
 
 
-async def upload_submission_image(body: bytes, object_key: str) -> str:
+async def upload_submission_image(body: bytes, object_key: str, content_type: str = "image/jpeg") -> str:
     """Unreviewed uploads are private even when the bucket default is public."""
 
     def upload():
         client = _build_client()
         client.put_object(
-            Bucket=settings.cos_bucket, Body=body, Key=object_key, ContentType="image/jpeg", ACL="private"
+            Bucket=settings.cos_bucket, Body=body, Key=object_key, ContentType=content_type, ACL="private"
         )
         return _public_url(object_key)
 

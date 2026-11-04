@@ -3,6 +3,8 @@
 import importlib
 import os
 import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -12,6 +14,7 @@ from app.config import Settings, get_settings
 from app.database import get_db
 from app.models import Prompt, PromptAnalysisAsset, PromptImage, User
 from app.services.prompt_analysis.errors import AnalysisError
+from app.utils.deps import get_current_user
 from tests.test_prompt_api_integration import configured as configured
 from tests.test_prompt_api_integration import limiter as limiter
 from tests.test_prompt_api_integration import objects as objects
@@ -75,6 +78,49 @@ def public_prompt():
             }
         ],
     }
+
+
+@pytest.mark.asyncio
+async def test_character_preview_is_unlimited_only_in_local_app(monkeypatch):
+    from app.redis import get_redis_client
+    from app.services import character_preview
+
+    monkeypatch.setenv("AIGC_LOCAL_PROMPT_PREVIEW", "1")
+    generate = AsyncMock(return_value="aW1hZ2U=")
+    monkeypatch.setattr(character_preview, "generate_image", generate)
+    app = entry().create_app(settings(openai_api_key="test-key"))
+    redis = SimpleNamespace(eval=AsyncMock(return_value=0))
+    app.dependency_overrides[get_redis_client] = lambda: redis
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=OWNER)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://127.0.0.1:8040"
+        ) as client:
+            responses = [
+                await client.post("/api/character-preview", json={"prompt": "test", "aspect_ratio": "3:4"})
+                for _ in range(2)
+            ]
+    assert [response.status_code for response in responses] == [200, 200]
+    assert generate.await_count == 2
+    generate.assert_awaited_with("test", "test-key", "864x1152")
+    redis.eval.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_character_preview_in_local_app_still_requires_login(monkeypatch):
+    from app.services import character_preview
+
+    monkeypatch.setenv("AIGC_LOCAL_PROMPT_PREVIEW", "1")
+    generate = AsyncMock(return_value="aW1hZ2U=")
+    monkeypatch.setattr(character_preview, "generate_image", generate)
+    app = entry().create_app(settings(openai_api_key="test-key"))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app), base_url="http://127.0.0.1:8040"
+        ) as client:
+            response = await client.post("/api/character-preview", json={"prompt": "test"})
+    assert response.status_code == 401
+    generate.assert_not_awaited()
 
 
 def test_preview_entry_exists_without_importing_the_production_app():

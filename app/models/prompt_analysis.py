@@ -57,6 +57,11 @@ class PromptAnalysis(Base):
             ["prompt_analysis_assets.id", "prompt_analysis_assets.user_id"],
             name="fk_prompt_analysis_asset_owner",
         ),
+        ForeignKeyConstraint(
+            ["output_asset_id", "user_id"],
+            ["prompt_analysis_assets.id", "prompt_analysis_assets.user_id"],
+            name="fk_prompt_analysis_output_asset_owner",
+        ),
         UniqueConstraint("user_id", "idempotency_key", name="uq_prompt_analysis_idempotency"),
         UniqueConstraint("id", "user_id", name="uq_prompt_analysis_owner"),
         UniqueConstraint("conversation_id", "conversation_turn", name="uq_prompt_conversation_turn"),
@@ -110,12 +115,14 @@ class PromptAnalysis(Base):
         Index("ix_prompt_analyses_queue", "status", "created_at"),
         Index("ix_prompt_analyses_lease", "status", "lease_expires_at"),
         Index("ix_prompt_analyses_asset", "asset_id"),
+        Index("ix_prompt_analyses_output_asset", "output_asset_id"),
         Index("ix_prompt_analyses_conversation", "user_id", "conversation_id", "conversation_turn"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    output_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     input_type: Mapped[str] = mapped_column(String(10), default="image", server_default="image")
     idea_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     purpose: Mapped[str | None] = mapped_column(String(30), nullable=True)

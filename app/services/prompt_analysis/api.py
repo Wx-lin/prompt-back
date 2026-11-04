@@ -13,9 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from app.config import get_settings
 from app.models import PromptAnalysis, PromptAnalysisAsset
 from app.services import vision
-from app.services.prompt_analysis import assets, limits
+from app.services.prompt_analysis import assets, limits, storage
 from app.services.prompt_analysis.errors import AnalysisError
 from app.services.vision.conversation_adapter import CHAT_PROMPT_VERSION
+from app.services.vision.image_adapter import MODEL as IMAGE_MODEL
+from app.services.vision.image_adapter import PROMPT_VERSION as IMAGE_VERSION
 from app.services.vision.text_adapter import TEXT_PROMPT_VERSION
 
 FEATURE_LOCK = 752056682
@@ -38,14 +40,15 @@ async def create(
     db, redis, user_id, asset_id, idempotency_key, source_client, *,
     input_type="image", idea_text=None, purpose=None, style=None,
     chat=False, conversation_id=None, parent_analysis_id=None, parent_revision=None,
-    user_message=None, retry_analysis_id=None, conversation_mode="auto",
+    user_message=None, retry_analysis_id=None, conversation_mode="auto", generated_image_id=None,
+    selected_generated_image=False,
 ):
     # Check replay before feature/config/version changes or new reservations.
     payload = {"asset_id": str(asset_id)} if input_type == "image" else {
         "input_type": "text", "idea_text": idea_text, "purpose": purpose, "style": style,
     }
     if chat:
-        if conversation_mode not in {"auto", "generate"}:
+        if conversation_mode not in {"auto", "generate", "image", "smart"}:
             raise AnalysisError(422, "INVALID_REQUEST", "对话模式无效")
         payload = {**payload, "conversation": True, "conversation_id": str(conversation_id),
                    "parent_analysis_id": str(parent_analysis_id), "parent_revision": parent_revision,
@@ -54,6 +57,8 @@ async def create(
         # requests; explicit generation is a different idempotent operation.
         if conversation_mode != "auto":
             payload = {**payload, "mode": conversation_mode}
+        if generated_image_id:
+            payload = {**payload, "generated_image_id": str(generated_image_id)}
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
     async def prior():
@@ -68,16 +73,26 @@ async def create(
     if existing:
         return _existing(existing, digest), False
     assets.ensure_enabled()
-    try:
-        vision.require_vision_configuration()
-    except vision.VisionError:
-        raise AnalysisError(503, "MODEL_UNAVAILABLE", "提示词生成暂未配置，请稍后再试") from None
+    if conversation_mode == "image":
+        if not get_settings().openai_api_key.get_secret_value().strip():
+            raise AnalysisError(503, "MODEL_UNAVAILABLE", "图片生成暂未配置，请稍后再试")
+        storage.require_storage_configuration()
+    else:
+        try:
+            vision.require_vision_configuration()
+        except vision.VisionError:
+            raise AnalysisError(503, "MODEL_UNAVAILABLE", "提示词生成暂未配置，请稍后再试") from None
     await limits.frequency(redis, f"create:{user_id}", 10, 60)
     await budget_lock(db)
     existing = await prior()
     if existing:
         await db.commit()
         return _existing(existing, digest), False
+    if (conversation_mode == "image" or generated_image_id is not None) and asset_id is None:
+        from app.services.prompt_analysis.conversations import generated_reference
+        asset_id = await generated_reference(db, user_id, conversation_id, generated_image_id)
+        if asset_id:
+            input_type, idea_text = "image", None
     asset = await assets.owned_asset(db, user_id, asset_id, lock=True) if input_type == "image" else None
     now = datetime.now(UTC)
     day = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
@@ -121,12 +136,26 @@ async def create(
             db, user_id, conversation_id, parent_analysis_id, parent_revision,
             retry_id=retry_analysis_id,
         )
+        if (conversation_mode == "smart" and generated_image_id is None
+                and asset_id is None and conversation_id):
+            from app.services.prompt_analysis.conversations import generated_reference
+            prior_image = await generated_reference(db, user_id, conversation_id)
+            if prepared.get("context_snapshot") is not None:
+                prepared = {**prepared, "context_snapshot": {
+                    **prepared["context_snapshot"], "has_generated_image": bool(prior_image),
+                }}
+        # An explicitly selected image can be older than the latest turn.  Its
+        # pixels and current request are the complete reference; later chat
+        # would otherwise apply changes from a different image branch.
+        if generated_image_id is not None:
+            prepared = {**prepared, "context_snapshot": None}
         retain_until = prepared.get("history_retain_until", retain_until)
         conversation_fields = {"conversation_id": conversation_id or job_id,
                                "user_message": user_message or "",
                                **{key: value for key, value in prepared.items()
                                   if key != "history_retain_until"}}
-    prompt_version = (
+    image_mode = chat and conversation_mode == "image"
+    prompt_version = IMAGE_VERSION if image_mode else (
         CHAT_PROMPT_VERSION if chat else
         TEXT_PROMPT_VERSION if input_type == "text" else settings.prompt_analysis_prompt_version
     )
@@ -143,16 +172,18 @@ async def create(
         request_hash=digest,
         source_client=source_client,
         prompt_version=prompt_version,
-        provider=settings.prompt_vision_provider,
-        model=settings.prompt_vision_model,
+        provider="openai-image" if image_mode else settings.prompt_vision_provider,
+        model=IMAGE_MODEL if image_mode else settings.prompt_vision_model,
         config_snapshot={
-            "provider": settings.prompt_vision_provider,
-            "model": settings.prompt_vision_model,
-            "base_url": settings.prompt_vision_base_url,
+            "provider": "openai-image" if image_mode else settings.prompt_vision_provider,
+            "model": IMAGE_MODEL if image_mode else settings.prompt_vision_model,
+            "base_url": "https://api.openai.com/v1" if image_mode else settings.prompt_vision_base_url,
             "prompt_version": prompt_version,
             "max_tokens": settings.prompt_vision_max_tokens,
-            "credential_ref": "PROMPT_VISION_API_KEY",
+            "credential_ref": "OPENAI_API_KEY" if image_mode else "PROMPT_VISION_API_KEY",
             **({"conversation_mode": conversation_mode} if chat else {}),
+            **({"selected_generated_image": True}
+               if generated_image_id is not None or selected_generated_image else {}),
             **({"enable_thinking": False} if settings.prompt_vision_provider == "dashscope" else {}),
         },
         quota_date=day,
@@ -222,7 +253,10 @@ async def image_fields(db, job):
 async def detail(db, job, *, summary=False, prompt_number=_PROMPT_NUMBER_UNSET):
     result = job.generated_result
     assistant = bool(result and result.get("schema_version") == "reply-1")
-    prompt = None if assistant else job.edited_prompts or (result.get("prompt") if result else None)
+    generated_image = bool(result and result.get("schema_version") == "image-1")
+    prompt = None
+    if not assistant and not generated_image:
+        prompt = job.edited_prompts or (result.get("prompt") if result else None)
     value = {
         "id": str(job.id),
         "asset_id": str(job.asset_id) if job.asset_id else None,
@@ -235,6 +269,8 @@ async def detail(db, job, *, summary=False, prompt_number=_PROMPT_NUMBER_UNSET):
         "user_message": job.user_message if job.user_message is not None else (job.idea_text or ""),
         "version": job.conversation_turn or 1,
         "status": job.status,
+        "generation_mode": "image" if (job.config_snapshot.get("conversation_mode") == "image"
+                                        or job.config_snapshot.get("smart_image")) else None,
         "phase": job.phase,
         "revision": job.revision,
         "created_at": job.created_at.isoformat(),
@@ -248,7 +284,7 @@ async def detail(db, job, *, summary=False, prompt_number=_PROMPT_NUMBER_UNSET):
         value["summary"] = {language: content[:160] for language, content in (prompt or {}).items()}
     else:
         value.update({
-            "result": None if assistant else result,
+            "result": None if assistant or generated_image else result,
             "prompt": prompt,
             "saved_to_history": job.status == "succeeded",
         })
@@ -259,6 +295,18 @@ async def detail(db, job, *, summary=False, prompt_number=_PROMPT_NUMBER_UNSET):
 
 async def _conversation_output(db, job, assistant, prompt, prompt_number):
     ready = job.status == "succeeded"
+    image_result = bool(job.generated_result and job.generated_result.get("schema_version") == "image-1")
+    generated_image = None
+    if ready and image_result and job.output_asset_id:
+        asset = await db.get(PromptAnalysisAsset, job.output_asset_id)
+        if asset is not None and asset.user_id == job.user_id and await assets.is_available(db, asset):
+            try:
+                fields = await assets.preview_fields(asset)
+                generated_image = {"id": str(asset.id), "url": fields["preview_url"],
+                                   "expires_at": fields["preview_expires_at"],
+                                   "width": asset.width, "height": asset.height}
+            except AnalysisError:
+                pass
     number = None
     if ready and not assistant and prompt:
         number = prompt_number
@@ -274,7 +322,12 @@ async def _conversation_output(db, job, assistant, prompt, prompt_number):
                 PromptAnalysis.generated_result["schema_version"].astext == "1",
             ))
     return {
-        "response_type": ("assistant" if assistant else "prompt") if ready else None,
+        "response_type": (
+            "image" if image_result else "assistant" if assistant else "prompt"
+        ) if ready else None,
+        "generated_image": generated_image,
+        "image_status": ("available" if generated_image else "temporarily_unavailable")
+        if ready and image_result else None,
         "assistant_reply": job.generated_result["reply"] if ready and assistant else None,
         "prompt_number": number,
     }
@@ -375,7 +428,7 @@ async def delete(db, user_id, job_id):
         other = await db.scalar(
             select(
                 exists().where(
-                    PromptAnalysis.asset_id == asset.id,
+                    or_(PromptAnalysis.asset_id == asset.id, PromptAnalysis.output_asset_id == asset.id),
                     PromptAnalysis.id != job.id,
                     PromptAnalysis.deleted_at.is_(None),
                     PromptAnalysis.image_retain_until > now,

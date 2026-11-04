@@ -1,6 +1,7 @@
 """Private same-page creative conversations over existing analysis jobs."""
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 
@@ -12,7 +13,7 @@ from app.schemas.prompt_conversation import (
     PromptAssetImport,
     RetryConversation,
 )
-from app.services.prompt_analysis import api, conversations, public_sources
+from app.services.prompt_analysis import api, assets, conversations, public_sources, storage
 from app.services.prompt_analysis.errors import AnalysisError
 from app.utils.deps import get_current_user
 from app.utils.jwt import decode_access_token_client
@@ -107,6 +108,45 @@ async def get_conversation(
     conversation_id: uuid.UUID, request: Request, user=Depends(get_current_user), db=Depends(get_db)
 ):
     return success(request, await conversations.detail(db, user.id, conversation_id))
+
+
+@router.get("/api/prompt-conversations/{conversation_id}/images/{image_id}/download")
+async def download_generated_image(
+    conversation_id: uuid.UUID, image_id: uuid.UUID, user=Depends(get_current_user), db=Depends(get_db)
+):
+    await conversations.owned_root(db, user.id, conversation_id)
+    await conversations.generated_reference(db, user.id, conversation_id, image_id)
+    asset = await assets.owned_asset(db, user.id, image_id)
+    return Response(
+        await storage.read_generated(asset.object_key), media_type="image/png",
+        headers={"Cache-Control": "private, no-store",
+                 "Content-Disposition": 'attachment; filename="generated-image.png"'},
+    )
+
+
+@router.get("/api/prompt-conversations/{conversation_id}/inputs/{analysis_id}/download")
+async def download_input_image(
+    conversation_id: uuid.UUID, analysis_id: uuid.UUID, user=Depends(get_current_user), db=Depends(get_db)
+):
+    await conversations.owned_root(db, user.id, conversation_id)
+    job = await api.owned_job(db, user.id, analysis_id)
+    if (
+        conversations.group_id(job) != conversation_id
+        or not job.asset_id
+        or job.image_retain_until <= datetime.now(UTC)
+    ):
+        raise assets.not_found()
+    asset = await assets.owned_asset(db, user.id, job.asset_id)
+    if asset.object_key.endswith('.jpg'):
+        body, media_type = await storage.read_private(asset.object_key), 'image/jpeg'
+    elif asset.object_key.endswith('.png'):
+        body, media_type = await storage.read_generated(asset.object_key), 'image/png'
+    else:
+        raise assets.not_found()
+    return Response(body, media_type=media_type, headers={
+        'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'attachment; filename="reference-image"',
+    })
 
 
 @router.delete("/api/prompt-conversations/{conversation_id}", status_code=204)

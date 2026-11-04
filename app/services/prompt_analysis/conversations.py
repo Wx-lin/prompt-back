@@ -164,7 +164,28 @@ async def create(db, redis, user_id, body, key, source, *, conversation_id=None)
         parent_revision=getattr(body, "parent_revision", None),
         user_message=body.message or "",
         conversation_mode=body.mode,
+        generated_image_id=body.generated_image_id,
     )
+
+
+async def generated_reference(db, user_id, conversation_id, image_id=None):
+    """Resolve only a visible image belonging to this user's current conversation."""
+    if conversation_id is None:
+        if image_id:
+            raise assets.not_found()
+        return None
+    query = select(PromptAnalysis).where(
+        *visible(user_id), membership(conversation_id),
+        PromptAnalysis.status == "succeeded", PromptAnalysis.output_asset_id.is_not(None),
+    )
+    if image_id:
+        query = query.where(PromptAnalysis.output_asset_id == image_id)
+    job = await db.scalar(query.order_by(
+        func.coalesce(PromptAnalysis.conversation_turn, 1).desc(), PromptAnalysis.created_at.desc()
+    ).limit(1))
+    if image_id and job is None:
+        raise assets.not_found()
+    return job.output_asset_id if job else None
 
 
 async def retry(db, redis, user_id, conversation_id, analysis_id, key, source):
@@ -188,6 +209,7 @@ async def retry(db, redis, user_id, conversation_id, analysis_id, key, source):
         user_message=job.user_message or job.idea_text or "",
         retry_analysis_id=analysis_id,
         conversation_mode=job.config_snapshot.get("conversation_mode", "auto"),
+        selected_generated_image=bool(job.config_snapshot.get("selected_generated_image")),
     )
 
 
@@ -312,18 +334,16 @@ async def history(db, user_id, limit, cursor):
 async def delete(db, user_id, conversation_id):
     await api.budget_lock(db)
     await owned_root(db, user_id, conversation_id)
-    ids = list(
-        await db.scalars(
-            select(PromptAnalysis.asset_id)
+    pairs = list(
+        await db.execute(
+            select(PromptAnalysis.asset_id, PromptAnalysis.output_asset_id)
             .where(
                 PromptAnalysis.user_id == user_id,
                 membership(conversation_id),
-                PromptAnalysis.asset_id.is_not(None),
             )
-            .distinct()
-            .order_by(PromptAnalysis.asset_id)
         )
     )
+    ids = sorted({asset_id for pair in pairs for asset_id in pair if asset_id is not None})
     images = (
         list(
             await db.scalars(
@@ -363,7 +383,7 @@ async def delete(db, user_id, conversation_id):
         if not await db.scalar(
             select(
                 exists().where(
-                    PromptAnalysis.asset_id == image.id,
+                    or_(PromptAnalysis.asset_id == image.id, PromptAnalysis.output_asset_id == image.id),
                     PromptAnalysis.deleted_at.is_(None),
                     PromptAnalysis.image_retain_until > now,
                 )

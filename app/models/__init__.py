@@ -5,6 +5,7 @@
 """
 
 from app.models.category_migration import CategoryLegacyMembership, CategoryMigrationChange
+from app.models.character_asset import CharacterAsset
 from app.models.content_report import ContentReport
 from app.models.crawl_draft import CrawlDraft, CrawlDraftImage
 from app.models.crawl_schedule import CrawlSchedule
@@ -20,6 +21,7 @@ from app.models.wechat_identity import WeChatIdentity
 __all__ = [
     "CategoryLegacyMembership",
     "CategoryMigrationChange",
+    "CharacterAsset",
     "ContentReport",
     "CrawlDraft",
     "CrawlDraftImage",

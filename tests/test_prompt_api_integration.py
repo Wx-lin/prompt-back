@@ -120,6 +120,7 @@ def objects(monkeypatch):
     monkeypatch.setattr(storage, "require_storage_configuration", lambda: None)
     monkeypatch.setattr(storage, "put_private", put)
     monkeypatch.setattr(storage, "read_private", read)
+    monkeypatch.setattr(storage, "read_generated", read)
     monkeypatch.setattr(storage, "delete_private", delete)
     monkeypatch.setattr(storage, "preview_url", preview)
     return values
@@ -465,6 +466,8 @@ async def test_delete_observes_worker_dispatch_between_initial_read_and_row_lock
         assert stored.deleted_at is not None
         assert stored.status == "running" and stored.quota_state == "reserved"
         assert stored.lease_token == claims[0].lease_token and stored.finished_at is None
+    # The interception above is specific to deletion, not the worker's own lock.
+    monkeypatch.setattr(service, "budget_lock", original_lock)
     assert await finish_job(sessions, job_id, claims[0].lease_token, result=generated_result())
     async with sessions() as db:
         stored = await db.get(PromptAnalysis, job_id)

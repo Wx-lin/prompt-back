@@ -42,6 +42,19 @@ def test_private_read_is_bounded_and_closes_stream(configured, monkeypatch):
     assert data.closed
 
 
+@pytest.mark.parametrize("size,valid", [(3 * 1024 * 1024, True), (5 * 1024 * 1024 + 1, False)])
+def test_generated_read_has_separate_limit_and_closes_stream(configured, monkeypatch, size, valid):
+    stream = io.BytesIO(b"x" * size)
+    client = SimpleNamespace(get_object=lambda **_: {"Body": SimpleNamespace(get_raw_stream=lambda: stream)})
+    monkeypatch.setattr(cos_service, "_build_client", lambda: client)
+    if valid:
+        assert len(asyncio.run(storage.read_generated("generated.png"))) == size
+    else:
+        with pytest.raises(ValueError):
+            asyncio.run(storage.read_generated("generated.png"))
+    assert stream.closed
+
+
 @pytest.mark.parametrize("missing", ["cos_secret_id", "cos_secret_key", "cos_bucket"])
 def test_missing_private_storage_is_explicit(configured, monkeypatch, missing):
     monkeypatch.setattr(get_settings(), missing, "")

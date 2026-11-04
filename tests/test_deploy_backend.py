@@ -323,6 +323,13 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
         ("true", "e04b75ad6312", "c2b8e0364a21", 1, False, "c2b8e0364a21"),
         ("false", "a85c2f87d019", "c2b8e0364a21", 1, False, "c2b8e0364a21"),
         ("true", "a85c2f87d019", "c2b8e0364a21", 1, False, ""),
+        ("true", "c2b8e0364a21", "e81d4a9b216f", 0, True, "e81d4a9b216f"),
+        ("true", "d93c70f6b321", "e81d4a9b216f", 0, True, "e81d4a9b216f"),
+        ("true", "e81d4a9b216f", "e81d4a9b216f", 0, False, "e81d4a9b216f"),
+        ("true", "a85c2f87d019", "e81d4a9b216f", 1, False, "e81d4a9b216f"),
+        ("true", "c2b8e0364a21", "d93c70f6b321", 1, False, "e81d4a9b216f"),
+        ("false", "c2b8e0364a21", "e81d4a9b216f", 1, False, "e81d4a9b216f"),
+        ("true", "c2b8e0364a21", "e81d4a9b216f", 1, False, ""),
     ],
 )
 def test_dispatch_migration_is_bounded(tmp_path, permission, current, head, expected, upgraded, reviewed):
@@ -366,6 +373,8 @@ sudo() {
     "event,target,expected",
     [
         ("push", "c2b8e0364a21", "false:"),
+        ("push", "e81d4a9b216f", "false:"),
+        ("workflow_dispatch", "e81d4a9b216f", "true:e81d4a9b216f"),
         ("workflow_dispatch", "c2b8e0364a21", "true:c2b8e0364a21"),
         ("push", "f8b24d0c51e3", "false:"),
         ("push", "a3e6b18d4092", "false:"),

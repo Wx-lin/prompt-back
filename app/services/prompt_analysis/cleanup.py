@@ -112,7 +112,7 @@ async def _mark_deleting(sessions: Sessions, asset_id) -> tuple[str, str] | None
             await db.scalars(
                 select(PromptAnalysis)
                 .where(
-                    PromptAnalysis.asset_id == asset_id,
+                    or_(PromptAnalysis.asset_id == asset_id, PromptAnalysis.output_asset_id == asset_id),
                 )
                 .order_by(PromptAnalysis.id)
                 .with_for_update()
@@ -122,7 +122,7 @@ async def _mark_deleting(sessions: Sessions, asset_id) -> tuple[str, str] | None
             return None
         if any(job.deleted_at is None and job.image_retain_until > now for job in jobs):
             return None
-        if not jobs and asset.unbound_expires_at > now:
+        if not jobs and asset.state != "deleting" and asset.unbound_expires_at > now:
             return None
         if asset.purge_after is not None and asset.purge_after > now:
             return None
@@ -134,7 +134,10 @@ async def cleanup_assets(sessions: Sessions) -> int:
     """Mark under locks, delete outside transactions, retry partial failures."""
     async with sessions() as db:
         now = await _clock(db)
-        references = select(PromptAnalysis.id).where(PromptAnalysis.asset_id == PromptAnalysisAsset.id)
+        references = select(PromptAnalysis.id).where(or_(
+            PromptAnalysis.asset_id == PromptAnalysisAsset.id,
+            PromptAnalysis.output_asset_id == PromptAnalysisAsset.id,
+        ))
         retained = references.where(
             PromptAnalysis.deleted_at.is_(None), PromptAnalysis.image_retain_until > now
         )
@@ -146,7 +149,10 @@ async def cleanup_assets(sessions: Sessions) -> int:
                     PromptAnalysisAsset.state.in_(("uploading", "ready", "deleting")),
                     ~exists(retained),
                     ~exists(leased),
-                    or_(exists(references), PromptAnalysisAsset.unbound_expires_at <= now),
+                    or_(
+                        exists(references), PromptAnalysisAsset.state == "deleting",
+                        PromptAnalysisAsset.unbound_expires_at <= now,
+                    ),
                     or_(PromptAnalysisAsset.purge_after.is_(None), PromptAnalysisAsset.purge_after <= now),
                 )
                 .order_by(PromptAnalysisAsset.created_at, PromptAnalysisAsset.id)

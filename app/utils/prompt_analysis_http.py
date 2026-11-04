@@ -11,7 +11,13 @@ from starlette.responses import JSONResponse
 from app.services.prompt_analysis.errors import AnalysisError
 
 logger = logging.getLogger(__name__)
-PRIVATE_PREFIXES = ("/api/prompt-assets", "/api/prompt-analyses", "/api/prompt-conversations")
+PRIVATE_PREFIXES = (
+    "/api/prompt-assets",
+    "/api/prompt-analyses",
+    "/api/prompt-conversations",
+    "/api/character-preview",
+    "/api/character-assets",
+)
 
 
 def request_id(request):
@@ -97,7 +103,11 @@ class PromptAnalysisBoundary:
         if scope["method"] not in {"POST", "PATCH", "PUT"}:
             return await self.app(scope, receive, private_send)
         maximum = (
-            6 * 1024 * 1024 if path == "/api/prompt-assets" and scope["method"] == "POST" else 128 * 1024
+            21 * 1024 * 1024
+            if path.startswith("/api/character-assets")
+            else 6 * 1024 * 1024
+            if path == "/api/prompt-assets" and scope["method"] == "POST"
+            else 128 * 1024
         )
         headers = dict(scope.get("headers", []))
         try:
