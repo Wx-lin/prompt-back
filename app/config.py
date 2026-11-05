@@ -107,6 +107,16 @@ class Settings(BaseSettings):
 
     # Character preview: server-side only. No default credential.
     openai_api_key: SecretStr = SecretStr("")
+    image_scf_enabled: bool = False
+    image_scf_region: str = "ap-singapore"
+    image_scf_namespace: str = "default"
+    image_scf_function_name: str = ""
+    image_scf_secret_id: SecretStr = SecretStr("")
+    image_scf_secret_key: SecretStr = SecretStr("")
+    image_scf_cos_region: str = "ap-singapore"
+    image_scf_cos_bucket: str = ""
+    image_scf_cos_secret_id: SecretStr = SecretStr("")
+    image_scf_cos_secret_key: SecretStr = SecretStr("")
     character_preview_user_daily_limit: int = Field(default=10, ge=1, le=10000)
     character_preview_global_daily_limit: int = Field(default=100, ge=1, le=1000000)
 

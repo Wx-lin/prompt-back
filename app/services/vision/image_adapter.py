@@ -7,6 +7,8 @@ import json
 
 import httpx
 
+from app.config import get_settings
+from app.services import scf_image_adapter
 from app.services.vision.adapter import VisionError
 
 MODEL = "gpt-image-2"
@@ -39,6 +41,12 @@ def build_image_prompt(message: str, context: dict | None) -> str:
 
 
 async def generate(prompt: str, *, api_key: str, reference: bytes | None, timeout: float) -> bytes:
+    settings = get_settings()
+    if getattr(settings, "image_scf_enabled", False):
+        try:
+            return await scf_image_adapter.generate(prompt, "1024x1024", reference, timeout, settings)
+        except scf_image_adapter.ScfImageError as exc:
+            raise VisionError(exc.code, uncertain=exc.uncertain) from None
     fields = {"model": MODEL, "prompt": prompt, "size": "1024x1024", "quality": "low", "n": "1"}
     headers = {"Authorization": f"Bearer {api_key}"}
     if reference:

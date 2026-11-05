@@ -7,7 +7,7 @@ import runpy
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic.migration import MigrationContext
@@ -17,6 +17,7 @@ from pydantic import SecretStr
 from sqlalchemy import select, update
 
 from app.models import PromptAnalysis, PromptAnalysisAsset
+from app.services import scf_image_adapter
 from app.services.prompt_analysis import assets, storage
 from app.services.prompt_analysis.api import budget_lock
 from app.services.prompt_analysis.cleanup import cleanup_assets
@@ -35,6 +36,43 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(
     not os.getenv("AIGC_TEST_DATABASE_URL") or not os.getenv("AIGC_TEST_REDIS_URL"),
     reason="Explicit isolated PostgreSQL and Redis URLs required",
 )]
+
+
+async def test_image_turn_via_scf_does_not_need_local_openai_key(api, sessions, monkeypatch, configured):
+    monkeypatch.setattr(configured, "openai_api_key", SecretStr(""))
+    for key, value in {
+        "image_scf_enabled": True, "image_scf_cos_bucket": scf_image_adapter.VERIFIED_BUCKET,
+        "image_scf_function_name": "test-function", "cos_bucket": "public-images",
+        "image_scf_secret_id": SecretStr("test-id"), "image_scf_secret_key": SecretStr("test-key"),
+        "image_scf_cos_secret_id": SecretStr("test-id"), "image_scf_cos_secret_key": SecretStr("test-key"),
+    }.items():
+        monkeypatch.setattr(configured, key, value)
+    generate = AsyncMock(return_value=image_bytes())
+    monkeypatch.setattr(scf_image_adapter, "generate", generate)
+    turn = response_data(await create_conversation(api, {"message": "一只猫", "mode": "image"}), 202)
+    assert await run_once(sessions)
+    result = response_data(await api.client.get("/api/prompt-analyses/" + turn["id"], headers=api.owner))
+    assert result["response_type"] == "image" and generate.await_count == 1
+
+
+async def test_scf_timeout_marks_unknown_and_does_not_dispatch_twice(api, sessions, monkeypatch, configured):
+    monkeypatch.setattr(configured, "openai_api_key", SecretStr(""))
+    for key, value in {
+        "image_scf_enabled": True, "image_scf_cos_bucket": scf_image_adapter.VERIFIED_BUCKET,
+        "image_scf_function_name": "test-function", "cos_bucket": "public-images",
+        "image_scf_secret_id": SecretStr("test-id"), "image_scf_secret_key": SecretStr("test-key"),
+        "image_scf_cos_secret_id": SecretStr("test-id"), "image_scf_cos_secret_key": SecretStr("test-key"),
+    }.items():
+        monkeypatch.setattr(configured, key, value)
+    generate = AsyncMock(side_effect=scf_image_adapter.ScfImageError("provider_timeout", uncertain=True))
+    monkeypatch.setattr(scf_image_adapter, "generate", generate)
+    turn = response_data(await create_conversation(api, {"message": "一只猫", "mode": "image"}), 202)
+    assert await run_once(sessions)
+    assert not await run_once(sessions)
+    async with sessions() as db:
+        stored = await db.get(PromptAnalysis, UUID(turn["id"]))
+        assert stored.status == "unknown" and stored.quota_state == "uncertain"
+    assert generate.await_count == 1
 
 
 async def test_image_turns_are_private_and_editable(api, sessions, monkeypatch, configured):

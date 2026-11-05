@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.config import get_settings
 from app.models import PromptAnalysis, PromptAnalysisAsset
 from app.schemas.prompt_conversation import ConversationImageIntent, ConversationImageQuestion
-from app.services import vision
+from app.services import scf_image_adapter, vision
 from app.services.prompt_analysis import assets, storage
 from app.services.prompt_analysis.cleanup import cleanup_assets, expire_history
 from app.services.prompt_analysis.errors import AnalysisError
@@ -105,7 +105,7 @@ async def run_once(sessions: Sessions) -> bool:
         execution_timeout = (settings.prompt_image_execution_timeout if image_mode or smart_mode
                              else settings.prompt_analysis_execution_timeout)
         if image_mode:
-            if not settings.openai_api_key.get_secret_value().strip():
+            if not scf_image_adapter.image_provider_available(settings):
                 raise vision.VisionError("image_model_not_configured")
             storage.require_storage_configuration()
         elif _worker_config_checks.get():
@@ -179,7 +179,7 @@ async def run_once(sessions: Sessions) -> bool:
                 image = None
             if not decision.result.use_context:
                 image_context = None
-            if not settings.openai_api_key.get_secret_value().strip():
+            if not scf_image_adapter.image_provider_available(settings):
                 raise vision.VisionError("image_model_not_configured")
             storage.require_storage_configuration()
             if not await mark_smart_image(sessions, claim.id, claim.lease_token):
@@ -270,8 +270,7 @@ async def run() -> None:
                     ready = True
                 except Exception:
                     ready = False
-                image_key = getattr(settings, "openai_api_key", None)
-                ready = ready or bool(image_key and image_key.get_secret_value().strip())
+                ready = ready or scf_image_adapter.image_provider_available(settings)
                 if not ready and previous_ready is not False:
                     logger.warning("Analysis execution unavailable: incomplete configuration")
                 previous_ready = ready

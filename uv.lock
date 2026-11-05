@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -30,6 +30,7 @@ dependencies = [
     { name = "redis" },
     { name = "resend" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tencentcloud-sdk-python-scf" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -64,6 +65,7 @@ requires-dist = [
     { name = "redis", specifier = ">=8.1.0" },
     { name = "resend", specifier = ">=2.49.1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.4" },
+    { name = "tencentcloud-sdk-python-scf", specifier = ">=3.1.100" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -1509,6 +1511,30 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7b/2b/3850dc6bf7ef71b088962eba31dafc6cffd2f96e577ebb0bb316df96da3e/starlette-1.7.0.tar.gz", hash = "sha256:c79f74ea63cff761804fbbfb182f1e0b440c2d07b164d24700c5a1bab5d6ff5d", size = 2736246, upload-time = "2026-09-23T07:30:26.35Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/d6/1ec1b290f9e0fb067899b61e1d37a30c923068bad260b216dbe37a7d2967/starlette-1.7.0-py3-none-any.whl", hash = "sha256:67f8e99895493dd2911a03f11314af6ceebeae4e704bb9f43dfc6a9db151c93e", size = 78980, upload-time = "2026-09-23T07:30:24.567Z" },
+]
+
+[[package]]
+name = "tencentcloud-sdk-python-common"
+version = "3.1.202"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/14/0a4fd54bd6d26262455c7f533bd284ae3235ac921342e8f93a8933cfccca/tencentcloud_sdk_python_common-3.1.202.tar.gz", hash = "sha256:e28cdef64af2741f801b0df0b305a30a94584c238aa9624b0f385d6f4a2b4db2", size = 22660, upload-time = "2026-11-04T19:34:37.361Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f7/97/3e1954096270636fce028a5f1e64d6dd9a2e56ce916622a35715b8232b40/tencentcloud_sdk_python_common-3.1.202-py2.py3-none-any.whl", hash = "sha256:9a6658d4a3ea9240a5bcd62b634ae08baa8dac6b5370f4a68f5f8b1dff7c906f", size = 34273, upload-time = "2026-11-04T19:34:35.436Z" },
+]
+
+[[package]]
+name = "tencentcloud-sdk-python-scf"
+version = "3.1.100"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tencentcloud-sdk-python-common" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/08/17/acb6d3d625aa1600338a6671b00a5894cf219644bff7fa25ce0f9dd51a58/tencentcloud_sdk_python_scf-3.1.100.tar.gz", hash = "sha256:e7c1e651cc763f2c6a2b7affea5dd529204a75d7e593dabf11fcffade66e04f9", size = 73362, upload-time = "2026-05-19T21:19:32.194Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/09/21/69dca62237365ec11cd01c418bd1fde1eaa1f449f890eca961988d8e2159/tencentcloud_sdk_python_scf-3.1.100-py2.py3-none-any.whl", hash = "sha256:8e40fc750b0948f59733e6aa6e9eb8f0c1d785598c5cc1742893ce07d6605f84", size = 74777, upload-time = "2026-05-19T21:19:29.823Z" },
 ]
 
 [[package]]

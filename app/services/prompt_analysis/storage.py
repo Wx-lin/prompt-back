@@ -25,11 +25,14 @@ _log_filter = _PrivateSdkLogFilter()
 def _private_sdk_operation():
     # The SDK logs derived signing keys and signed URLs even for local signing.
     # ContextVars propagate through to_thread without suppressing unrelated tasks.
-    names = ["qcloud_cos.cos_auth", "qcloud_cos.cos_client", "urllib3.connectionpool"]
+    names = [
+        "qcloud_cos.cos_auth", "qcloud_cos.cos_client", "urllib3.connectionpool", "tencentcloud",
+        "tencentcloud_sdk_common",
+    ]
     names.extend(
         name
         for name in list(logging.Logger.manager.loggerDict)
-        if name.startswith(("qcloud_cos.", "urllib3.", "requests."))
+        if name.startswith(("qcloud_cos.", "urllib3.", "requests.", "tencentcloud."))
     )
     for name in names:
         logging.getLogger(name).addFilter(_log_filter)

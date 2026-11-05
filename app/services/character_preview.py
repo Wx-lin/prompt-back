@@ -11,6 +11,7 @@ import httpx
 from redis.exceptions import RedisError
 
 from app.config import get_settings
+from app.services import scf_image_adapter
 from app.services.prompt_analysis.errors import AnalysisError
 
 _MAX_RESPONSE_BYTES = 20 * 1024 * 1024
@@ -61,7 +62,7 @@ class PreviewError(AnalysisError):
 async def create_preview(prompt: str, user_id: str, redis, aspect_ratio: str) -> str:
     settings = get_settings()
     key = settings.openai_api_key.get_secret_value().strip()
-    if not key:
+    if not scf_image_adapter.image_provider_available(settings):
         raise PreviewError(503, "角色预览暂未配置，请稍后再试")
     lock_key = f"character_preview:running:{user_id}"
     lock_token = uuid.uuid4().hex
@@ -93,6 +94,17 @@ async def create_preview(prompt: str, user_id: str, redis, aspect_ratio: str) ->
 
 async def generate_image(prompt: str, api_key: str, size: str) -> str:
     """Send one fixed-size image request; never return upstream diagnostics."""
+    settings = get_settings()
+    if getattr(settings, "image_scf_enabled", False):
+        try:
+            image = await scf_image_adapter.generate(
+                prompt, size, None, 150, settings, max_output=scf_image_adapter.MAX_PREVIEW_IMAGE,
+            )
+            return base64.b64encode(image).decode()
+        except scf_image_adapter.ScfImageError as exc:
+            if exc.code == "provider_timeout":
+                raise PreviewError(504, "图片生成超时，请稍后重试") from None
+            raise PreviewError(502, "图片生成暂不可用，请稍后重试") from None
     payload = {
         "model": "gpt-image-2",
         "prompt": prompt,

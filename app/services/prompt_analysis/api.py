@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
 from app.models import PromptAnalysis, PromptAnalysisAsset
-from app.services import vision
+from app.services import scf_image_adapter, vision
 from app.services.prompt_analysis import assets, limits, storage
 from app.services.prompt_analysis.errors import AnalysisError
 from app.services.vision.conversation_adapter import CHAT_PROMPT_VERSION
@@ -74,7 +74,7 @@ async def create(
         return _existing(existing, digest), False
     assets.ensure_enabled()
     if conversation_mode == "image":
-        if not get_settings().openai_api_key.get_secret_value().strip():
+        if not scf_image_adapter.image_provider_available(get_settings()):
             raise AnalysisError(503, "MODEL_UNAVAILABLE", "图片生成暂未配置，请稍后再试")
         storage.require_storage_configuration()
     else:
