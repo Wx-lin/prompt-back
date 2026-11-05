@@ -130,6 +130,7 @@ requests==2.34.2
     # via
     #   cos-python-sdk-v5
     #   resend
+    #   tencentcloud-sdk-python-common
 resend==2.49.1
     # via aigc-prompt-backend
 rsa==4.9.1
@@ -146,6 +147,10 @@ sqlalchemy==2.1.4
     #   alembic
 starlette==1.7.0
     # via fastapi
+tencentcloud-sdk-python-common==3.1.202
+    # via tencentcloud-sdk-python-scf
+tencentcloud-sdk-python-scf==3.1.100
+    # via aigc-prompt-backend
 truststore==0.10.4 ; sys_platform != 'emscripten'
     # via
     #   httpcore2

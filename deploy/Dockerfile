@@ -8,6 +8,7 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
 COPY backend/deploy/requirements.txt ./requirements.txt
 RUN uv venv --python /usr/local/bin/python .venv && uv pip install --python .venv/bin/python --index-url https://mirrors.cloud.tencent.com/pypi/simple -r requirements.txt
+RUN .venv/bin/python -c "import tencentcloud.scf.v20180416"
 COPY crawler /opt/MediaCrawler
 WORKDIR /opt/MediaCrawler
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential && rm -rf /var/lib/apt/lists/*
