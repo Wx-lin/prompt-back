@@ -16,7 +16,7 @@ PRIVATE_PREFIXES = (
     "/api/prompt-analyses",
     "/api/prompt-conversations",
     "/api/character-preview",
-    "/api/character-assets",
+    "/api/character-assets", "/api/character-interpret",
 )
 
 

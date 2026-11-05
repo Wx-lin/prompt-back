@@ -107,6 +107,9 @@ class Settings(BaseSettings):
 
     # Character preview: server-side only. No default credential.
     openai_api_key: SecretStr = SecretStr("")
+    character_interpret_model: str = "gpt-4.1-mini"
+    character_interpret_user_daily_limit: int = Field(default=50, ge=1, le=10000)
+    character_interpret_global_daily_limit: int = Field(default=500, ge=1, le=1000000)
     image_scf_enabled: bool = False
     image_scf_region: str = "ap-singapore"
     image_scf_namespace: str = "default"

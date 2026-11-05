@@ -100,3 +100,24 @@ async def test_local_app_still_requires_authentication(monkeypatch):
     ) as client:
         response = await client.post("/api/character-preview", json={"prompt": "test"})
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_local_app_supports_character_interpretation(monkeypatch):
+    from app.services import character_interpret
+    from scripts.local_character_preview import create_app
+
+    monkeypatch.setenv('AIGC_LOCAL_CHARACTER_PREVIEW', '1')
+    monkeypatch.setattr(character_interpret, 'require_configuration', lambda: None)
+    monkeypatch.setattr(character_interpret, 'generate_fields', AsyncMock(return_value={
+        'values': {'hairColor': '黑色'}, 'unmapped': ''
+    }))
+    app = create_app(local_settings(openai_api_key='test-key'))
+    app.dependency_overrides[get_redis_client] = lambda: SimpleNamespace(eval=AsyncMock(return_value=1))
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id='test-user')
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app), base_url='http://127.0.0.1:8051'
+    ) as client:
+        response = await client.post('/api/character-interpret', json={'description': '黑发'})
+    assert response.status_code == 200
+    assert response.json()['data']['values'] == {'hairColor': '黑色'}

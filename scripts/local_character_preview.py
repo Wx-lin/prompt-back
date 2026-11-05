@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI
 
 from app.config import Settings, get_settings
+from app.routers import character_interpret
 from app.utils.prompt_analysis_http import PromptAnalysisBoundary, error_response
 from scripts.local_unlimited_character_preview import create_local_character_router
 
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(PromptAnalysisBoundary)
     app.add_middleware(LocalOnlyBoundary)
     app.include_router(create_local_character_router(settings))
+    app.include_router(character_interpret.router)
 
     @app.get("/health")
     async def health():
