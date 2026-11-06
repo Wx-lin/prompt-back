@@ -15,12 +15,14 @@ from app.redis import get_redis_client
 from app.routers import character_preview
 from app.services import character_preview as service
 from app.utils.deps import get_current_user
+from app.utils.prompt_analysis_http import PromptAnalysisBoundary
 
 
 @pytest_asyncio.fixture
 async def client(monkeypatch):
     app = FastAPI()
     app.include_router(character_preview.router)
+    app.add_middleware(PromptAnalysisBoundary)
     user = SimpleNamespace(id=uuid4())
     redis = SimpleNamespace(eval=AsyncMock(return_value=1))
     app.dependency_overrides[get_current_user] = lambda: user
@@ -146,7 +148,7 @@ async def test_provider_request_is_bounded_and_provider_error_does_not_leak_key(
 async def test_preview_body_is_bounded_before_json_parsing():
     from app.main import app
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://test') as api:
-        response = await api.post('/api/character-preview', content=b'x' * (128 * 1024 + 1))
+        response = await api.post('/api/character-preview', content=b'x' * (7 * 1024 * 1024 + 128 * 1024 + 1))
     assert response.status_code == 413
     assert response.json()['error']['code'] == 'PAYLOAD_TOO_LARGE'
 
@@ -190,3 +192,152 @@ async def test_custom_ratio_is_rejected(client):
     response = await api.post('/api/character-preview', json={'prompt': 'person', 'aspect_ratio': '9999:1'})
     assert response.status_code == 422
     redis.eval.assert_not_awaited()
+
+
+def _reference_image(fmt='PNG'):
+    import base64
+    import io
+
+    from PIL import Image
+    output = io.BytesIO()
+    Image.new('RGB', (24, 32), (70, 140, 200)).save(output, format=fmt)
+    return base64.b64encode(output.getvalue()).decode()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fmt', ['PNG', 'JPEG', 'WEBP'])
+async def test_reference_image_is_validated_and_passed_to_generation(client, monkeypatch, fmt):
+    api, _, _ = client
+    generate = AsyncMock(return_value='aW1hZ2U=')
+    monkeypatch.setattr(service, 'generate_image', generate)
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': _reference_image(fmt),
+    })
+    assert response.status_code == 200
+    assert generate.await_args.args[:3] == ('change hair', 'test-key', '1024x1024')
+    assert generate.await_args.args[3].startswith(b'\xff\xd8\xff')
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('encoded', ['invalid!base64', 'aGVsbG8=', '', 'a' * (7 * 1024 * 1024)])
+async def test_invalid_reference_is_rejected_before_quota_or_provider(client, monkeypatch, encoded):
+    api, redis, _ = client
+    generate = AsyncMock()
+    monkeypatch.setattr(service, 'generate_image', generate)
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': encoded,
+    })
+    assert response.status_code == 422
+    assert all(call.args[0] != service._RATE_LIMIT_SCRIPT for call in redis.eval.await_args_list)
+    generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_direct_provider_reference_uses_edits_and_attaches_image(monkeypatch):
+    import base64
+    image = base64.b64encode(b'\x89PNG\r\n\x1a\nhello').decode()
+    requests = []
+    async def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={'data': [{'b64_json': image}]})
+    monkeypatch.setattr(service.httpx, 'AsyncHTTPTransport', lambda **_: httpx.MockTransport(handler))
+    output = await service.generate_image('change hair', 'test-key', '864x1152', b'\xff\xd8\xffvalidjpeg')
+    assert output == image
+    assert requests[0].url.path == '/v1/images/edits'
+    assert b'validjpeg' in requests[0].content
+    assert b'864x1152' in requests[0].content
+
+
+@pytest.mark.asyncio
+async def test_scf_provider_receives_reference(monkeypatch):
+    settings = SimpleNamespace(image_scf_enabled=True)
+    monkeypatch.setattr(service, 'get_settings', lambda: settings)
+    generate = AsyncMock(return_value=b'\x89PNG\r\n\x1a\nimage')
+    monkeypatch.setattr(service.scf_image_adapter, 'generate', generate)
+    await service.generate_image('change hair', 'test-key', '864x1152', b'jpeg')
+    assert generate.await_args.args[:3] == ('change hair', '864x1152', b'jpeg')
+
+
+@pytest.mark.asyncio
+async def test_oversized_decoded_reference_is_rejected(client, monkeypatch):
+    import base64
+    api, redis, _ = client
+    generate = AsyncMock()
+    monkeypatch.setattr(service, 'generate_image', generate)
+    encoded = base64.b64encode(b'\x89PNG\r\n\x1a\n' + b'x' * (5 * 1024 * 1024)).decode()
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': encoded,
+    })
+    assert response.status_code == 422
+    assert all(call.args[0] != service._RATE_LIMIT_SCRIPT for call in redis.eval.await_args_list)
+    generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reference_image_with_too_many_pixels_is_rejected(client, monkeypatch):
+    import base64
+    import io
+
+    from PIL import Image
+    image = Image.new('RGB', (5000, 4001), (0, 0, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format='PNG')
+    api, redis, _ = client
+    generate = AsyncMock()
+    monkeypatch.setattr(service, 'generate_image', generate)
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': base64.b64encode(buffer.getvalue()).decode(),
+    })
+    assert response.status_code == 422
+    assert all(call.args[0] != service._RATE_LIMIT_SCRIPT for call in redis.eval.await_args_list)
+    generate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reference_decode_is_single_flight_per_user(client, monkeypatch):
+    api, redis, _ = client
+    redis.eval.return_value = 0
+    decode = AsyncMock()
+    monkeypatch.setattr(service.asyncio, 'to_thread', decode)
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': _reference_image(),
+    })
+    assert response.status_code == 429
+    decode.assert_not_awaited()
+    assert all(call.args[0] != service._RATE_LIMIT_SCRIPT for call in redis.eval.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_reference_decode_fails_closed_if_redis_is_unavailable(client, monkeypatch):
+    api, redis, _ = client
+    redis.eval.side_effect = RedisError()
+    decode = AsyncMock()
+    monkeypatch.setattr(service.asyncio, 'to_thread', decode)
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': _reference_image(),
+    })
+    assert response.status_code == 503
+    decode.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_large_valid_reference_is_allowed_through_request_boundary(client, monkeypatch):
+    import base64
+    import io
+    import random
+
+    from PIL import Image
+
+    pixels = random.Random(23).randbytes(512 * 512 * 3)
+    image = Image.frombytes('RGB', (512, 512), pixels)
+    buffer = io.BytesIO()
+    image.save(buffer, format='PNG')
+    assert 128 * 1024 < buffer.tell() < 5 * 1024 * 1024
+    api, _, _ = client
+    generate = AsyncMock(return_value='aW1hZ2U=')
+    monkeypatch.setattr(service, 'generate_image', generate)
+    response = await api.post('/api/character-preview', json={
+        'prompt': 'change hair', 'reference_image_base64': base64.b64encode(buffer.getvalue()).decode(),
+    })
+    assert response.status_code == 200
+    assert generate.await_count == 1

@@ -105,6 +105,8 @@ class PromptAnalysisBoundary:
         maximum = (
             21 * 1024 * 1024
             if path.startswith("/api/character-assets")
+            else 7 * 1024 * 1024 + 128 * 1024
+            if path == "/api/character-preview"
             else 6 * 1024 * 1024
             if path == "/api/prompt-assets" and scope["method"] == "POST"
             else 128 * 1024

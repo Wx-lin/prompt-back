@@ -78,6 +78,7 @@ async def test_scf_request_uses_bounded_private_cos_objects(monkeypatch, scf_set
     if reference:
         assert client.put[0]['ACL'] == 'private' and client.put[0]['Body'] == reference
         assert event['reference_get_url'].split('?')[0].endswith(f'image-relay/{job_id}/reference')
+        assert [obj['Key'].rsplit('/', 1)[-1] for obj in client.deleted] == ['reference', 'output']
     assert all(not obj['Key'].endswith('/claim') for obj in client.deleted)
 
 
@@ -281,3 +282,37 @@ async def test_chat_image_switches_to_scf_without_openai_key(monkeypatch, scf_se
     monkeypatch.setattr(scf_image_adapter, 'generate', generate)
     assert await image_adapter.generate('person', api_key='', reference=PNG, timeout=120) == PNG
     assert generate.await_args.args[:4] == ('person', '1024x1024', PNG, 120)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('outcome', ['error', 'cancel'])
+async def test_failed_reference_edit_schedules_private_object_cleanup(monkeypatch, scf_settings, outcome):
+    import asyncio
+    from unittest.mock import Mock
+
+    client = FakeCos()
+    scheduled = Mock()
+    monkeypatch.setattr(scf_image_adapter, '_build_cos_client', lambda settings: client)
+    monkeypatch.setattr(scf_image_adapter, '_schedule_delayed_cleanup', scheduled, raising=False)
+    failure = asyncio.CancelledError() if outcome == 'cancel' else RuntimeError('remote error')
+    monkeypatch.setattr(scf_image_adapter, '_invoke', AsyncMock(side_effect=failure))
+    expected = asyncio.CancelledError if outcome == 'cancel' else scf_image_adapter.ScfImageError
+    with pytest.raises(expected):
+        await scf_image_adapter.generate('person', '1024x1024', b'reference', 120, scf_settings)
+    scheduled.assert_called_once()
+    args = scheduled.call_args.args
+    assert args[0] is client
+    assert args[1] == scf_image_adapter.VERIFIED_BUCKET
+    assert [key.rsplit('/', 1)[-1] for key in args[2]] == ['reference', 'output']
+    assert not client.deleted
+
+
+@pytest.mark.asyncio
+async def test_deferred_cleanup_waits_for_signed_url_expiry(monkeypatch):
+    sleep = AsyncMock()
+    cleanup = AsyncMock()
+    monkeypatch.setattr(scf_image_adapter.asyncio, 'sleep', sleep)
+    monkeypatch.setattr(scf_image_adapter, '_cleanup', cleanup)
+    await scf_image_adapter._cleanup_after_expiry('client', 'bucket', ['output', 'reference'])
+    sleep.assert_awaited_once_with(scf_image_adapter.SIGN_TTL + 60)
+    cleanup.assert_awaited_once_with('client', 'bucket', ['output', 'reference'])

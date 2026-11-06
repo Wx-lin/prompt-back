@@ -13,9 +13,18 @@ from redis.exceptions import RedisError
 from app.config import get_settings
 from app.services import scf_image_adapter
 from app.services.prompt_analysis.errors import AnalysisError
+from app.services.prompt_analysis_images import MAX_IMAGE_BYTES, prepare_analysis_image
 
 _MAX_RESPONSE_BYTES = 20 * 1024 * 1024
 logger = logging.getLogger(__name__)
+_REFERENCE_VALIDATORS = asyncio.Semaphore(2)
+_REFERENCE_LOCK_SCRIPT = """
+if redis.call('EXISTS', KEYS[1]) == 1 or tonumber(redis.call('GET', KEYS[2]) or '0') >= 20 then return 0 end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', 60)
+local count = redis.call('INCR', KEYS[2])
+if count == 1 then redis.call('EXPIRE', KEYS[2], 60) end
+return 1
+"""
 IMAGE_SIZES = {
     "1:1": "1024x1024",
     "3:4": "864x1152",
@@ -59,7 +68,62 @@ class PreviewError(AnalysisError):
         super().__init__(status_code, codes[status_code], message)
 
 
-async def create_preview(prompt: str, user_id: str, redis, aspect_ratio: str) -> str:
+def _decode_reference_image(encoded: str) -> bytes:
+    raw = base64.b64decode(encoded, validate=True)
+    if not raw or len(raw) > MAX_IMAGE_BYTES:
+        raise ValueError("invalid reference")
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime = "image/png"
+    elif raw.startswith(b"\xff\xd8\xff"):
+        mime = "image/jpeg"
+    elif raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        mime = "image/webp"
+    else:
+        raise ValueError("invalid reference")
+    return prepare_analysis_image(raw, mime).image_bytes
+
+
+async def prepare_reference_image(encoded: str, user_id: str, redis) -> bytes:
+    """Validate an image under a per-user lock without consuming generation quota."""
+    lock_key = f"character_preview:validating:{user_id}"
+    token = uuid.uuid4().hex
+    try:
+        allowed = await redis.eval(
+            _REFERENCE_LOCK_SCRIPT, 2, lock_key, f"character_preview:validation-rate:{user_id}", token,
+        )
+    except RedisError:
+        raise PreviewError(503, "角色预览暂不可用，请稍后再试") from None
+    if not allowed:
+        raise PreviewError(429, "参考图片处理中，请稍后再试")
+    try:
+        try:
+            await asyncio.wait_for(_REFERENCE_VALIDATORS.acquire(), timeout=0.1)
+        except TimeoutError:
+            raise PreviewError(503, "参考图片处理繁忙，请稍后再试") from None
+        try:
+            task = asyncio.create_task(asyncio.to_thread(_decode_reference_image, encoded))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                try:
+                    await task
+                except Exception:
+                    logger.warning("Character reference validation failed after request cancellation")
+                raise
+            except (ValueError, binascii.Error):
+                raise AnalysisError(422, "INVALID_REQUEST", "参考图片无效，请重试") from None
+        finally:
+            _REFERENCE_VALIDATORS.release()
+    finally:
+        try:
+            await redis.eval(_RELEASE_LOCK_SCRIPT, 1, lock_key, token)
+        except RedisError:
+            logger.warning("Character reference validation lock release failed")
+
+
+async def create_preview(
+    prompt: str, user_id: str, redis, aspect_ratio: str, reference: bytes | None = None,
+) -> str:
     settings = get_settings()
     key = settings.openai_api_key.get_secret_value().strip()
     if not scf_image_adapter.image_provider_available(settings):
@@ -83,6 +147,8 @@ async def create_preview(prompt: str, user_id: str, redis, aspect_ratio: str) ->
     if not allowed:
         raise PreviewError(429, "生成过于频繁或已达到次数限制，请稍后再试")
     try:
+        if reference is not None:
+            return await generate_image(prompt, key, IMAGE_SIZES[aspect_ratio], reference)
         return await generate_image(prompt, key, IMAGE_SIZES[aspect_ratio])
     finally:
         try:
@@ -92,13 +158,13 @@ async def create_preview(prompt: str, user_id: str, redis, aspect_ratio: str) ->
             logger.warning("Character preview lock release failed")
 
 
-async def generate_image(prompt: str, api_key: str, size: str) -> str:
+async def generate_image(prompt: str, api_key: str, size: str, reference: bytes | None = None) -> str:
     """Send one fixed-size image request; never return upstream diagnostics."""
     settings = get_settings()
     if getattr(settings, "image_scf_enabled", False):
         try:
             image = await scf_image_adapter.generate(
-                prompt, size, None, 150, settings, max_output=scf_image_adapter.MAX_PREVIEW_IMAGE,
+                prompt, size, reference, 150, settings, max_output=scf_image_adapter.MAX_PREVIEW_IMAGE,
             )
             return base64.b64encode(image).decode()
         except scf_image_adapter.ScfImageError as exc:
@@ -113,13 +179,21 @@ async def generate_image(prompt: str, api_key: str, size: str) -> str:
         "n": 1,
         "output_format": "png",
     }
-    request = httpx.Request(
-        "POST",
-        "https://api.openai.com/v1/images/generations",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        content=json.dumps(payload).encode(),
-        extensions={"timeout": {"connect": 15.0, "read": 150.0, "write": 15.0, "pool": 15.0}},
-    )
+    headers = {"Authorization": f"Bearer {api_key}"}
+    timeout = {"connect": 15.0, "read": 150.0, "write": 15.0, "pool": 15.0}
+    if reference is not None:
+        request = httpx.Request(
+            "POST", "https://api.openai.com/v1/images/edits", headers=headers,
+            data={"model": "gpt-image-2", "prompt": prompt, "size": size, "quality": "low", "n": "1"},
+            files={"image": ("reference.jpg", reference, "image/jpeg")},
+            extensions={"timeout": timeout},
+        )
+    else:
+        request = httpx.Request(
+            "POST", "https://api.openai.com/v1/images/generations",
+            headers={**headers, "Content-Type": "application/json"},
+            content=json.dumps(payload).encode(), extensions={"timeout": timeout},
+        )
     try:
         async with asyncio.timeout(150):
             async with httpx.AsyncHTTPTransport(retries=0) as transport:

@@ -25,6 +25,7 @@ VERIFIED_REGION = "ap-singapore"
 _SDK_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="image-scf")
 _SDK_CAPACITY = threading.BoundedSemaphore(4)
 _CLEANUP_TASKS: set[asyncio.Task] = set()
+_DEFERRED_CLEANUP_TASKS: set[asyncio.Task] = set()
 
 
 class ScfImageError(Exception):
@@ -155,6 +156,19 @@ def _schedule_cleanup(client, bucket, keys):
     task.add_done_callback(_CLEANUP_TASKS.discard)
 
 
+async def _cleanup_after_expiry(client, bucket, keys):
+    # A timed-out SDK call may still be running. Wait until the signed URLs
+    # have expired before removing objects that it could be using.
+    await asyncio.sleep(SIGN_TTL + 60)
+    await _cleanup(client, bucket, keys)
+
+
+def _schedule_delayed_cleanup(client, bucket, keys):
+    task = asyncio.create_task(_cleanup_after_expiry(client, bucket, keys))
+    _DEFERRED_CLEANUP_TASKS.add(task)
+    task.add_done_callback(_DEFERRED_CLEANUP_TASKS.discard)
+
+
 async def generate(prompt, size, reference, timeout, settings, *, max_output=MAX_IMAGE):
     if not configured(settings):
         raise ScfImageError("image_model_not_configured")
@@ -166,6 +180,8 @@ async def generate(prompt, size, reference, timeout, settings, *, max_output=MAX
     job_id = uuid.uuid4().hex
     prefix = f"image-relay/{job_id}"
     claim_key, output_key, reference_key = (f"{prefix}/{name}" for name in ("claim", "output", "reference"))
+    client = None
+    completed = False
     try:
         with _private_sdk_operation():
             deadline = asyncio.get_running_loop().time() + timeout
@@ -200,8 +216,9 @@ async def generate(prompt, size, reference, timeout, settings, *, max_output=MAX
                         raise ScfImageError("provider_timeout", uncertain=True)
                     raise ScfImageError("image_provider_error", uncertain=True)
                 body = await _sdk_call(_read_image, client, bucket, output_key, max_output)
+            completed = True
             try:
-                _schedule_cleanup(client, bucket, [output_key, reference_key] if reference else [output_key])
+                _schedule_cleanup(client, bucket, [reference_key, output_key] if reference else [output_key])
             except Exception:
                 logger.warning("Could not schedule temporary image cleanup")
             return body
@@ -211,3 +228,9 @@ async def generate(prompt, size, reference, timeout, settings, *, max_output=MAX
         raise ScfImageError("provider_timeout", uncertain=True) from None
     except Exception:
         raise ScfImageError("image_provider_error", uncertain=True) from None
+    finally:
+        if reference and client is not None and not completed:
+            try:
+                _schedule_delayed_cleanup(client, bucket, [reference_key, output_key])
+            except Exception:
+                logger.warning("Could not schedule delayed temporary image cleanup")
