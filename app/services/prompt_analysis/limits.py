@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from app.config import get_settings
+from app.services.generation_privileges import unlimited_generation_user_ids
 from app.services.prompt_analysis.errors import AnalysisError
 
 SCRIPT = """
@@ -26,4 +27,7 @@ async def upload_limit(redis, user_id):
     settings = get_settings()
     day = datetime.now(UTC).astimezone(ZoneInfo("Asia/Shanghai")).date()
     await frequency(redis, f"upload:{user_id}", settings.prompt_analysis_upload_hourly_limit, 3600)
-    await frequency(redis, f"upload_global:{day}", settings.prompt_analysis_global_upload_daily_limit, 172800)
+    if user_id not in unlimited_generation_user_ids():
+        await frequency(
+            redis, f"upload_global:{day}", settings.prompt_analysis_global_upload_daily_limit, 172800,
+        )

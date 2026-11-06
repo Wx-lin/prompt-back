@@ -8,6 +8,8 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from app.models import PromptAnalysis, PromptAnalysisAsset
+from app.services.prompt_analysis import api as analysis_api
+from app.services.prompt_analysis import limits
 from tests.test_prompt_api_integration import (
     api as api,
 )
@@ -112,6 +114,66 @@ async def test_completed_job_still_consumes_personal_daily_quota(api, sessions, 
         rows = (await db.scalars(select(PromptAnalysis))).all()
         assert len(rows) == 1 and rows[0].status == "succeeded"
         assert rows[0].quota_state == "consumed"
+
+
+async def test_unlimited_user_bypasses_daily_quotas_without_consuming_global_budget(
+    api, sessions, configured, monkeypatch,
+):
+    configured.prompt_analysis_daily_limit = 1
+    configured.prompt_analysis_global_daily_limit = 1
+    monkeypatch.setattr(
+        analysis_api, "unlimited_generation_user_ids", lambda: frozenset({api.user_id}), raising=False,
+    )
+    admin_asset = await upload(api)
+    other_asset = await upload(api, headers=api.other)
+
+    first = response_data(await create(api, admin_asset["id"]), 202)
+    await finish(sessions, first["id"])
+    second_key = str(uuid.uuid4())
+    second = response_data(await create(api, admin_asset["id"], second_key), 202)
+    assert response_data(await create(api, admin_asset["id"], second_key))["id"] == second["id"]
+    assert response_data(await create(api, admin_asset["id"]), 409)["code"] == "ANALYSIS_IN_PROGRESS"
+    await finish(sessions, second["id"])
+
+    ordinary = response_data(await create(api, other_asset["id"], headers=api.other), 202)
+    await finish(sessions, ordinary["id"])
+    error = response_data(await create(api, other_asset["id"], headers=api.other), 429)
+    assert error["code"] == "QUOTA_EXCEEDED"
+    third = response_data(await create(api, admin_asset["id"]), 202)
+
+    async with sessions() as db:
+        rows = (await db.scalars(select(PromptAnalysis))).all()
+        assert len(rows) == 4
+        assert next(row for row in rows if str(row.id) == third["id"]).quota_state == "reserved"
+
+
+async def test_unlimited_user_uploads_do_not_consume_global_daily_budget(api, configured, monkeypatch):
+    monkeypatch.setattr(configured, "prompt_analysis_global_upload_daily_limit", 1)
+    monkeypatch.setattr(
+        limits, "unlimited_generation_user_ids", lambda: frozenset({api.user_id}), raising=False,
+    )
+    await upload(api)
+    await upload(api)
+    await upload(api, headers=api.other)
+    response = await api.client.post(
+        "/api/prompt-assets", headers=api.other,
+        files={"file": ("private.png", image_bytes(), "image/png")},
+    )
+    assert response_data(response, 429)["code"] == "RATE_LIMITED"
+    await upload(api)
+
+
+async def test_unlimited_user_upload_still_obeys_hourly_rate_limit(api, configured, monkeypatch):
+    monkeypatch.setattr(configured, "prompt_analysis_upload_hourly_limit", 1)
+    monkeypatch.setattr(
+        limits, "unlimited_generation_user_ids", lambda: frozenset({api.user_id}), raising=False,
+    )
+    await upload(api)
+    response = await api.client.post(
+        "/api/prompt-assets", headers=api.owner,
+        files={"file": ("private.png", image_bytes(), "image/png")},
+    )
+    assert response_data(response, 429)["code"] == "RATE_LIMITED"
 
 
 async def test_full_global_queue_rejects_other_user_without_reserving_quota(api, sessions, configured):

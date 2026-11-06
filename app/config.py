@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     # --- 数据库 ---
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/aigc_prompt"
 
+    # Comma-separated authenticated user UUIDs exempt from daily generation quotas.
+    generation_unlimited_user_ids: str = ""
+
+    @field_validator("generation_unlimited_user_ids")
+    @classmethod
+    def validate_generation_unlimited_user_ids(cls, value: str) -> str:
+        from uuid import UUID
+
+        for item in value.split(","):
+            if item.strip():
+                UUID(item.strip())
+        return value
+
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
 

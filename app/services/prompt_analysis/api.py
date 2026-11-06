@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import get_settings
 from app.models import PromptAnalysis, PromptAnalysisAsset
 from app.services import scf_image_adapter, vision
+from app.services.generation_privileges import unlimited_generation_user_ids
 from app.services.prompt_analysis import assets, limits, storage
 from app.services.prompt_analysis.errors import AnalysisError
 from app.services.vision.image_adapter import MODEL as IMAGE_MODEL
@@ -111,17 +112,22 @@ async def create(
         PromptAnalysis.quota_date == day,
         PromptAnalysis.quota_state.in_(["reserved", "consumed", "uncertain"]),
     )
-    total = await db.scalar(select(func.count()).select_from(PromptAnalysis).where(*budget_filter))
-    personal = await db.scalar(
-        select(func.count())
-        .select_from(PromptAnalysis)
-        .where(*budget_filter, PromptAnalysis.user_id == user_id)
-    )
-    if (
-        total >= settings.prompt_analysis_global_daily_limit
-        or personal >= settings.prompt_analysis_daily_limit
-    ):
-        raise AnalysisError(429, "QUOTA_EXCEEDED", "今日解析次数已用完")
+    unlimited_ids = unlimited_generation_user_ids()
+    if user_id not in unlimited_ids:
+        global_filter = (
+            (*budget_filter, PromptAnalysis.user_id.not_in(unlimited_ids)) if unlimited_ids else budget_filter
+        )
+        total = await db.scalar(select(func.count()).select_from(PromptAnalysis).where(*global_filter))
+        personal = await db.scalar(
+            select(func.count())
+            .select_from(PromptAnalysis)
+            .where(*budget_filter, PromptAnalysis.user_id == user_id)
+        )
+        if (
+            total >= settings.prompt_analysis_global_daily_limit
+            or personal >= settings.prompt_analysis_daily_limit
+        ):
+            raise AnalysisError(429, "QUOTA_EXCEEDED", "今日解析次数已用完")
     queued = await db.scalar(
         select(func.count()).select_from(PromptAnalysis).where(PromptAnalysis.status == "queued")
     )

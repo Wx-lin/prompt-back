@@ -83,6 +83,26 @@ async def test_smart_image_then_selected_image_edit(api, sessions, monkeypatch, 
     assert generated.await_count == 2 and generated.await_args.kwargs["reference"] is not None
 
 
+async def test_unlimited_user_can_generate_images_after_daily_quota(api, sessions, monkeypatch, configured):
+    from app.services.prompt_analysis import api as analysis_api
+
+    configured.prompt_analysis_daily_limit = 1
+    configured.prompt_analysis_global_daily_limit = 1
+    configured.openai_api_key = SecretStr("fixture-only")
+    monkeypatch.setattr(analysis_api, "unlimited_generation_user_ids", lambda: frozenset({api.user_id}))
+    intent = {"schema_version": "image-intent-1", "use_reference": False, "use_context": False}
+    provider(monkeypatch, [intent, intent])
+    generated = AsyncMock(return_value=image_bytes())
+    monkeypatch.setattr(image_adapter, "generate", generated)
+
+    for _ in range(2):
+        job = response_data(await create_conversation(api, {"message": "画一只猫", "mode": "smart"}), 202)
+        assert await run_once(sessions)
+        result = response_data(await api.client.get("/api/prompt-analyses/" + job["id"], headers=api.owner))
+        assert result["status"] == "succeeded" and result["response_type"] == "image"
+    assert generated.await_count == 2
+
+
 async def test_smart_rejects_unowned_image_reference(api, sessions, monkeypatch, configured):
     from uuid import uuid4
 

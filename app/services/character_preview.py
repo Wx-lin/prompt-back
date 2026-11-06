@@ -12,6 +12,7 @@ from redis.exceptions import RedisError
 
 from app.config import get_settings
 from app.services import scf_image_adapter
+from app.services.generation_privileges import unlimited_generation_user_ids
 from app.services.prompt_analysis.errors import AnalysisError
 from app.services.prompt_analysis_images import MAX_IMAGE_BYTES, prepare_analysis_image
 
@@ -38,14 +39,17 @@ _RATE_LIMIT_SCRIPT = """
 local cooldown = tonumber(redis.call('GET', KEYS[1]) or '0')
 local user_count = tonumber(redis.call('GET', KEYS[2]) or '0')
 local global_count = tonumber(redis.call('GET', KEYS[3]) or '0')
+local unlimited = ARGV[4] == '1'
 if redis.call('EXISTS', KEYS[4]) == 1 or cooldown >= 1
-   or user_count >= tonumber(ARGV[1]) or global_count >= tonumber(ARGV[2]) then
+   or (not unlimited and (user_count >= tonumber(ARGV[1]) or global_count >= tonumber(ARGV[2]))) then
   return 0
 end
 redis.call('SET', KEYS[4], ARGV[3], 'EX', 180)
 for i = 1, 3 do
-  local count = redis.call('INCR', KEYS[i])
-  if count == 1 then redis.call('EXPIRE', KEYS[i], i == 1 and 30 or 86400) end
+  if i ~= 3 or not unlimited then
+    local count = redis.call('INCR', KEYS[i])
+    if count == 1 then redis.call('EXPIRE', KEYS[i], i == 1 and 30 or 86400) end
+  end
 end
 return 1
 """
@@ -130,6 +134,7 @@ async def create_preview(
         raise PreviewError(503, "角色预览暂未配置，请稍后再试")
     lock_key = f"character_preview:running:{user_id}"
     lock_token = uuid.uuid4().hex
+    unlimited = str(user_id) in {str(value) for value in unlimited_generation_user_ids()}
     try:
         allowed = await redis.eval(
             _RATE_LIMIT_SCRIPT,
@@ -141,6 +146,7 @@ async def create_preview(
             getattr(settings, "character_preview_user_daily_limit", 10),
             getattr(settings, "character_preview_global_daily_limit", 100),
             lock_token,
+            "1" if unlimited else "0",
         )
     except RedisError:
         raise PreviewError(503, "角色预览暂不可用，请稍后再试") from None

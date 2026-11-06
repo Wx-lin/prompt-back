@@ -1,7 +1,9 @@
 """Character preview is bounded for visitors and never leaks provider failures."""
 
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -9,6 +11,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from pydantic import SecretStr
+from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.redis import get_redis_client
@@ -16,6 +19,87 @@ from app.routers import character_preview
 from app.services import character_preview as service
 from app.utils.deps import get_current_user
 from app.utils.prompt_analysis_http import PromptAnalysisBoundary
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not os.getenv('AIGC_TEST_REDIS_URL'), reason='Requires isolated Redis test URL')
+async def test_privileged_preview_skips_daily_caps_but_retains_cooldown_and_lock(monkeypatch):
+    """Daily exemption must not consume the ordinary global quota or bypass concurrency."""
+    redis_url = os.environ['AIGC_TEST_REDIS_URL']
+    parsed = urlsplit(redis_url)
+    assert parsed.scheme == 'redis' and parsed.hostname in {'127.0.0.1', '::1'}
+    assert parsed.path.startswith('/') and parsed.path[1:].isdigit() and int(parsed.path[1:]) > 0
+    assert not parsed.query and not parsed.fragment
+    redis = Redis.from_url(redis_url)
+    prefix = f'character-preview-test:{uuid4()}:'
+
+    class ScopedRedis:
+        async def eval(self, script, key_count, *args):
+            keys = [prefix + key for key in args[:key_count]]
+            return await redis.eval(script, key_count, *keys, *args[key_count:])
+
+    scoped_redis = ScopedRedis()
+    privileged, ordinary = uuid4(), uuid4()
+    global_key = prefix + 'character_preview:global'
+    privileged_daily = prefix + f'character_preview:user:{privileged}'
+    cooldown = prefix + f'character_preview:cooldown:{privileged}'
+    lock = prefix + f'character_preview:running:{privileged}'
+    ordinary_daily = prefix + f'character_preview:user:{ordinary}'
+    ordinary_cooldown = prefix + f'character_preview:cooldown:{ordinary}'
+    ordinary_lock = prefix + f'character_preview:running:{ordinary}'
+    keys = [global_key, privileged_daily, cooldown, lock, ordinary_daily, ordinary_cooldown, ordinary_lock]
+    settings = SimpleNamespace(openai_api_key=SecretStr('test-key'),
+                               character_preview_user_daily_limit=1,
+                               character_preview_global_daily_limit=1)
+    monkeypatch.setattr(service, 'get_settings', lambda: settings)
+    monkeypatch.setattr(service, 'unlimited_generation_user_ids', lambda: frozenset({privileged}))
+    monkeypatch.setattr(service.scf_image_adapter, 'image_provider_available', lambda _: True)
+    generate = AsyncMock(return_value='aW1hZ2U=')
+    monkeypatch.setattr(service, 'generate_image', generate)
+    try:
+        await redis.set(global_key, 1)
+        await redis.set(privileged_daily, 1)
+        assert await service.create_preview('person', str(privileged), scoped_redis, '1:1') == 'aW1hZ2U='
+        assert int(await redis.get(global_key)) == 1
+        assert await redis.get(cooldown) is not None
+        with pytest.raises(service.PreviewError) as cooldown_error:
+            await service.create_preview('person', str(privileged), scoped_redis, '1:1')
+        assert cooldown_error.value.status_code == 429
+        await redis.delete(cooldown)
+        await redis.set(lock, 'existing')
+        with pytest.raises(service.PreviewError) as lock_error:
+            await service.create_preview('person', str(privileged), scoped_redis, '1:1')
+        assert lock_error.value.status_code == 429
+        with pytest.raises(service.PreviewError) as ordinary_error:
+            await service.create_preview('person', str(ordinary), scoped_redis, '1:1')
+        assert ordinary_error.value.status_code == 429
+        await redis.set(global_key, 0)
+        await redis.set(ordinary_daily, 1)
+        with pytest.raises(service.PreviewError) as personal_error:
+            await service.create_preview('person', str(ordinary), scoped_redis, '1:1')
+        assert personal_error.value.status_code == 429
+        await redis.delete(ordinary_daily)
+        assert await service.create_preview('person', str(ordinary), scoped_redis, '1:1') == 'aW1hZ2U='
+        assert int(await redis.get(global_key)) == 1
+        assert generate.await_count == 2
+    finally:
+        await redis.delete(*keys)
+        await redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_preview_quota_exemption_is_derived_from_user_id(monkeypatch):
+    privileged, ordinary = uuid4(), uuid4()
+    redis = SimpleNamespace(eval=AsyncMock(return_value=1))
+    settings = SimpleNamespace(openai_api_key=SecretStr('test-key'))
+    monkeypatch.setattr(service, 'get_settings', lambda: settings)
+    monkeypatch.setattr(service, 'unlimited_generation_user_ids', lambda: frozenset({privileged}))
+    monkeypatch.setattr(service.scf_image_adapter, 'image_provider_available', lambda _: True)
+    monkeypatch.setattr(service, 'generate_image', AsyncMock(return_value='aW1hZ2U='))
+    await service.create_preview('person', str(privileged), redis, '1:1')
+    assert redis.eval.await_args_list[0].args[-1] == '1'
+    await service.create_preview('person', str(ordinary), redis, '1:1')
+    assert redis.eval.await_args_list[2].args[-1] == '0'
 
 
 @pytest_asyncio.fixture
