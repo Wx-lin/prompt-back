@@ -57,7 +57,9 @@ async def latest_turn(db, user_id, conversation_id, *, retained=True):
     )
 
 
-async def prepare(db, user_id, conversation_id, parent_id, parent_revision, *, retry_id=None):
+async def prepare(
+    db, user_id, conversation_id, parent_id, parent_revision, *, retry_id=None, agent_context=False
+):
     """Called under shared budget lock after asset locks and active-work check."""
     if conversation_id is None:
         return {"conversation_turn": 1, "context_snapshot": None, "parent_analysis_id": None}
@@ -82,7 +84,7 @@ async def prepare(db, user_id, conversation_id, parent_id, parent_revision, *, r
         raise AnalysisError(409, "CONVERSATION_CHANGED", "对话已更新，请重新打开后继续")
     if latest.revision != parent_revision:
         raise AnalysisError(409, "PARENT_REVISION_CONFLICT", "上一版已修改，请刷新后继续")
-    context = await _creation_context(db, user_id, conversation_id)
+    context = await _creation_context(db, user_id, conversation_id, agent_context=agent_context)
     return {
         "conversation_turn": count + 1,
         "context_snapshot": context,
@@ -91,12 +93,31 @@ async def prepare(db, user_id, conversation_id, parent_id, parent_revision, *, r
     }
 
 
-async def _creation_context(db, user_id, conversation_id):
+def _bounded_agent_dialogue(recent):
+    """Keep 12 user turns and prioritize recent replies within 12k characters."""
+    user_texts = [(item.user_message or item.idea_text or "")[:500] for item in recent]
+    remaining = max(0, 12000 - sum(map(len, user_texts)))
+    selected = []
+    for item, user in zip(recent, user_texts, strict=True):
+        assistant = (item.generated_result or {}).get("reply", "")[:min(2000, remaining)]
+        remaining -= len(assistant)
+        selected.append({"user": user, "assistant": assistant})
+    return list(reversed(selected))
+
+
+async def _creation_context(db, user_id, conversation_id, *, agent_context=False):
     # The latest message anchors concurrency. The latest actual prompt anchors
     # creative revisions, even after many intervening ordinary replies.
+    branch_floor = None
+    if agent_context:
+        branch_floor = await db.scalar(select(PromptAnalysis.conversation_turn).where(
+            *visible(user_id), membership(conversation_id), PromptAnalysis.status == "succeeded",
+            PromptAnalysis.config_snapshot["reference_branch_started"].astext == "true",
+        ).order_by(PromptAnalysis.conversation_turn.desc()).limit(1))
+    branch_filter = (PromptAnalysis.conversation_turn >= branch_floor,) if branch_floor is not None else ()
     prompt_job = await db.scalar(select(PromptAnalysis).where(
         *visible(user_id), membership(conversation_id),
-        PromptAnalysis.status == "succeeded",
+        PromptAnalysis.status == "succeeded", *branch_filter,
         PromptAnalysis.generated_result["schema_version"].astext == "1",
     ).order_by(func.coalesce(PromptAnalysis.conversation_turn, 1).desc()).limit(1))
     recent = list(
@@ -105,32 +126,33 @@ async def _creation_context(db, user_id, conversation_id):
             .where(
                 *visible(user_id),
                 membership(conversation_id),
-                PromptAnalysis.status == "succeeded",
+                PromptAnalysis.status == "succeeded", *branch_filter,
             )
             .order_by(
                 func.coalesce(PromptAnalysis.conversation_turn, 1).desc(),
                 PromptAnalysis.created_at.desc(),
                 PromptAnalysis.id.desc(),
             )
-            .limit(6)
+            .limit(12 if agent_context else 6)
         )
     )
     prompt = BilingualPrompt.model_validate(
         prompt_job.edited_prompts or prompt_job.generated_result["prompt"]
     ) if prompt_job else None
+    dialogue = _bounded_agent_dialogue(recent) if agent_context else [
+        {
+            "user": item.user_message or item.idea_text or "",
+            "assistant": (item.generated_result or {}).get("reply", ""),
+        }
+        for item in reversed(recent)
+    ]
     return {
         "prompt": prompt.model_dump() if prompt else None,
         "title": title(prompt_job or recent[0]),
         "breakdown": copy.deepcopy(prompt_job.generated_result["breakdown"]) if prompt_job else None,
         "source_type": prompt_job.input_type if prompt_job else None,
-        "recent_messages": [item.user_message or item.idea_text or "" for item in reversed(recent)],
-        "recent_dialogue": [
-            {
-                "user": item.user_message or item.idea_text or "",
-                "assistant": (item.generated_result or {}).get("reply", ""),
-            }
-            for item in reversed(recent)
-        ],
+        "recent_messages": [turn["user"] for turn in dialogue],
+        "recent_dialogue": dialogue,
     }
 
 
@@ -145,6 +167,7 @@ def _retry_context(latest, retry_id, version):
         "conversation_turn": version,
         "context_snapshot": copy.deepcopy(latest.context_snapshot),
         "parent_analysis_id": latest.parent_analysis_id,
+        "retry_prompt_version": latest.prompt_version,
     }
 
 
@@ -186,6 +209,41 @@ async def generated_reference(db, user_id, conversation_id, image_id=None):
     if image_id and job is None:
         raise assets.not_found()
     return job.output_asset_id if job else None
+
+
+async def has_reference_history(db, user_id, conversation_id):
+    if not conversation_id:
+        return False
+    return bool(await db.scalar(select(exists().where(
+        *visible(user_id), membership(conversation_id), PromptAnalysis.status == "succeeded",
+        or_(PromptAnalysis.output_asset_id.is_not(None), PromptAnalysis.asset_id.is_not(None)),
+    ))))
+
+
+async def latest_reference(db, user_id, conversation_id):
+    """Return the latest visible uploaded or generated image for this conversation.
+
+    Look at the latest image turn before checking availability: falling back to
+    an older image after the latest expires would silently cross image branches.
+    """
+    if not conversation_id:
+        return None
+    job = await db.scalar(select(PromptAnalysis).where(
+        *visible(user_id), membership(conversation_id), PromptAnalysis.status == "succeeded",
+        or_(PromptAnalysis.output_asset_id.is_not(None), PromptAnalysis.asset_id.is_not(None)),
+    ).order_by(
+        func.coalesce(PromptAnalysis.conversation_turn, 1).desc(),
+        PromptAnalysis.created_at.desc(), PromptAnalysis.id.desc(),
+    ).limit(1))
+    if job is None or job.image_retain_until <= datetime.now(UTC):
+        return None
+    reference_id = job.output_asset_id or job.asset_id
+    try:
+        return await assets.owned_asset(db, user_id, reference_id)
+    except AnalysisError as exc:
+        if exc.status_code == 404:
+            return None
+        raise
 
 
 async def retry(db, redis, user_id, conversation_id, analysis_id, key, source):

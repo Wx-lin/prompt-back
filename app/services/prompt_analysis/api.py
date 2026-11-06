@@ -15,10 +15,10 @@ from app.models import PromptAnalysis, PromptAnalysisAsset
 from app.services import scf_image_adapter, vision
 from app.services.prompt_analysis import assets, limits, storage
 from app.services.prompt_analysis.errors import AnalysisError
-from app.services.vision.conversation_adapter import CHAT_PROMPT_VERSION
 from app.services.vision.image_adapter import MODEL as IMAGE_MODEL
 from app.services.vision.image_adapter import PROMPT_VERSION as IMAGE_VERSION
 from app.services.vision.text_adapter import TEXT_PROMPT_VERSION
+from app.services.vision.versions import AGENT_PROMPT_VERSION, new_conversation_version
 
 FEATURE_LOCK = 752056682
 _PROMPT_NUMBER_UNSET = object()
@@ -128,6 +128,8 @@ async def create(
     if queued >= settings.prompt_analysis_queue_limit:
         raise AnalysisError(503, "QUEUE_FULL", "当前解析任务较多，请稍后重试")
     conversation_fields = {}
+    reference_branch_started = False
+    retry_prompt_version = None
     job_id = uuid.uuid4()
     retain_until = now + timedelta(days=30)
     if chat:
@@ -135,14 +137,36 @@ async def create(
         prepared = await prepare(
             db, user_id, conversation_id, parent_analysis_id, parent_revision,
             retry_id=retry_analysis_id,
+            agent_context=new_conversation_version(conversation_mode) == AGENT_PROMPT_VERSION,
         )
+        retry_prompt_version = prepared.get("retry_prompt_version")
+        agent_context = (
+            retry_prompt_version or new_conversation_version(conversation_mode)
+        ) == AGENT_PROMPT_VERSION
+        if (agent_context
+                and conversation_id and asset_id is not None):
+            from app.services.prompt_analysis.conversations import has_reference_history
+            reference_branch_started = await has_reference_history(db, user_id, conversation_id)
+            if reference_branch_started:
+                prepared = {**prepared, "context_snapshot": None}
         if (conversation_mode == "smart" and generated_image_id is None
                 and asset_id is None and conversation_id):
             from app.services.prompt_analysis.conversations import generated_reference
             prior_image = await generated_reference(db, user_id, conversation_id)
             if prepared.get("context_snapshot") is not None:
+                agent_reference = None
+                if agent_context:
+                    from app.services.prompt_analysis.conversations import latest_reference
+                    agent_reference = await latest_reference(db, user_id, conversation_id)
                 prepared = {**prepared, "context_snapshot": {
-                    **prepared["context_snapshot"], "has_generated_image": bool(prior_image),
+                    **prepared["context_snapshot"],
+                    "has_generated_image": (
+                        bool(agent_reference and agent_reference.object_key.endswith(".png"))
+                        if agent_context
+                        else bool(prior_image)
+                    ),
+                    **({"has_reference_image": bool(agent_reference)}
+                       if agent_context else {}),
                 }}
         # An explicitly selected image can be older than the latest turn.  Its
         # pixels and current request are the complete reference; later chat
@@ -153,12 +177,14 @@ async def create(
         conversation_fields = {"conversation_id": conversation_id or job_id,
                                "user_message": user_message or "",
                                **{key: value for key, value in prepared.items()
-                                  if key != "history_retain_until"}}
+                                  if key not in {"history_retain_until", "retry_prompt_version"}}}
     image_mode = chat and conversation_mode == "image"
     prompt_version = IMAGE_VERSION if image_mode else (
-        CHAT_PROMPT_VERSION if chat else
+        new_conversation_version(conversation_mode) if chat else
         TEXT_PROMPT_VERSION if input_type == "text" else settings.prompt_analysis_prompt_version
     )
+    if retry_prompt_version is not None:
+        prompt_version = retry_prompt_version
     job = PromptAnalysis(
         id=job_id,
         user_id=user_id,
@@ -184,6 +210,7 @@ async def create(
             **({"conversation_mode": conversation_mode} if chat else {}),
             **({"selected_generated_image": True}
                if generated_image_id is not None or selected_generated_image else {}),
+            **({"reference_branch_started": True} if reference_branch_started else {}),
             **({"enable_thinking": False} if settings.prompt_vision_provider == "dashscope" else {}),
         },
         quota_date=day,

@@ -89,3 +89,25 @@ class ConversationContext(BaseModel):
     recent_messages: Annotated[list[Annotated[str, Field(max_length=500)]], Field(max_length=6)]
     recent_dialogue: Annotated[list[ConversationDialogue], Field(max_length=6)] = Field(default_factory=list)
     has_generated_image: bool = False
+
+
+class AgentConversationDialogue(ConversationDialogue):
+    """Agent history bounds replies independently of stored conversation data."""
+
+    assistant: Annotated[str, Field(max_length=2000)]
+
+
+class AgentConversationContext(ConversationContext):
+    """Recent agent history: at most 12 turns and 12,000 dialogue characters."""
+
+    recent_messages: Annotated[list[Annotated[str, Field(max_length=500)]], Field(max_length=12)]
+    recent_dialogue: Annotated[list[AgentConversationDialogue], Field(max_length=12)] = Field(
+        default_factory=list
+    )
+    has_reference_image: bool = False
+
+    @model_validator(mode="after")
+    def bound_dialogue(self):
+        if sum(len(turn.user) + len(turn.assistant) for turn in self.recent_dialogue) > 12000:
+            raise ValueError("Agent dialogue exceeds character budget")
+        return self

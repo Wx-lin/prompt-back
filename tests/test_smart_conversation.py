@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -26,6 +27,22 @@ pytestmark = [
         reason="Explicit isolated PostgreSQL and Redis URLs required",
     ),
 ]
+
+
+@pytest.fixture(autouse=True)
+def agent_provider_fixture(monkeypatch):
+    """These worker tests exercise durable routing with an injected provider."""
+    from app.services import vision
+
+    async def decide(*args, **kwargs):
+        kwargs.pop("before_model_call", None)
+        if kwargs.get("context") is not None:
+            kwargs["context"] = {
+                key: value for key, value in kwargs["context"].items() if key != "has_reference_image"
+            }
+        return await vision.generate_conversation(*args, **kwargs)
+
+    monkeypatch.setattr(vision, "agent", SimpleNamespace(generate_conversation=decide), raising=False)
 
 
 async def test_smart_reply_does_not_call_image_provider(api, sessions, monkeypatch, configured):

@@ -25,6 +25,8 @@ dependencies = [
     "openai>=3.26.1",
     "pillow>=13.0.0",
     "tencentcloud-sdk-python-scf>=3.1.100",
+    "langchain==1.4.9",
+    "langchain-openai==1.7.4",
 ]
 
 [dependency-groups]

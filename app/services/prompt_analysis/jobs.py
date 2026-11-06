@@ -17,6 +17,7 @@ from app.services.vision.conversation_adapter import CHAT_PROMPT_VERSION
 from app.services.vision.image_adapter import MODEL as IMAGE_MODEL
 from app.services.vision.image_adapter import PROMPT_VERSION as IMAGE_VERSION
 from app.services.vision.text_adapter import TEXT_PROMPT_VERSION
+from app.services.vision.versions import supported_conversation_version
 
 Sessions = async_sessionmaker[AsyncSession]
 
@@ -43,6 +44,7 @@ class ClaimedJob:
     conversation_mode: str = "auto"
     user_id: uuid.UUID | None = None
     selected_generated_image: bool = False
+    prompt_version: str = CHAT_PROMPT_VERSION
 
 
 async def _clock(db: AsyncSession) -> datetime:
@@ -141,6 +143,7 @@ async def claim_job(sessions: Sessions) -> ClaimedJob | None:
                     job.config_snapshot.get("conversation_mode", "auto"),
                     job.user_id,
                     bool(job.config_snapshot.get("selected_generated_image")),
+                    job.prompt_version,
                 )
     return None
 
@@ -170,11 +173,17 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
             _terminal(job, now, status="failed", quota="released", error="input_unavailable")
             return False
         image_mode = job.config_snapshot.get("conversation_mode") == "image"
+        mode = job.config_snapshot.get("conversation_mode", "auto")
+        conversation_version = (
+            job.prompt_version
+            if job.conversation_id and supported_conversation_version(mode, job.prompt_version)
+            else CHAT_PROMPT_VERSION
+        )
         expected = {
             "provider": settings.prompt_vision_provider,
             "model": settings.prompt_vision_model,
             "prompt_version": (
-                CHAT_PROMPT_VERSION if job.conversation_id else
+                conversation_version if job.conversation_id else
                 TEXT_PROMPT_VERSION if job.input_type == "text" else settings.prompt_analysis_prompt_version
             ),
             "max_tokens": settings.prompt_vision_max_tokens,
@@ -223,7 +232,9 @@ async def dispatch_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.
         return True
 
 
-async def mark_smart_image(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.UUID) -> bool:
+async def mark_smart_image(
+    sessions: Sessions, job_id: uuid.UUID, lease_token: uuid.UUID, *, new_branch: bool = False,
+) -> bool:
     """Fence the second provider call under the existing durable dispatch intent."""
     async with sessions() as db, db.begin():
         job = await db.scalar(select(PromptAnalysis).where(PromptAnalysis.id == job_id).with_for_update())
@@ -232,7 +243,10 @@ async def mark_smart_image(sessions: Sessions, job_id: uuid.UUID, lease_token: u
             return False
         if job.config_snapshot.get("conversation_mode") != "smart" or job.phase != "thinking":
             return False
-        job.config_snapshot = {**job.config_snapshot, "smart_image": True}
+        job.config_snapshot = {
+            **job.config_snapshot, "smart_image": True,
+            **({"reference_branch_started": True} if new_branch else {}),
+        }
         job.phase = "generating"
         return True
 
@@ -263,6 +277,26 @@ async def heartbeat_job(sessions: Sessions, job_id: uuid.UUID, lease_token: uuid
         return True
 
 
+def _provider_accounting(result):
+    provider_id = getattr(result, "provider_request_id", None)
+    raw_usage = getattr(result, "usage", {})
+    if not isinstance(raw_usage, dict):
+        raw_usage = {}
+    # Usage is numeric accounting only, never arbitrary provider response text.
+    usage = {
+        key: value
+        for key, value in raw_usage.items()
+        if key in {
+            "input_tokens", "output_tokens", "prompt_tokens", "completion_tokens", "total_tokens",
+            "image_tokens", "text_input_tokens", "cached_tokens", "reasoning_tokens", "text_output_tokens",
+        }
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+        and value >= 0
+    }
+    return str(provider_id)[:200] if provider_id else None, usage
+
+
 def _result_parts(result, *, allow_reply=False):
     from app.schemas.prompt_analysis import ModelResult
     from app.schemas.prompt_conversation import ConversationImageResult, ConversationReplyResult
@@ -277,21 +311,7 @@ def _result_parts(result, *, allow_reply=False):
     else:
         schema = ModelResult
     validated = schema.model_validate(content).model_dump(mode="json")
-    provider_id = getattr(result, "provider_request_id", None)
-    raw_usage = getattr(result, "usage", {})
-    # Usage is numeric accounting only, never arbitrary provider response text.
-    usage = {
-        key: value
-        for key, value in raw_usage.items()
-        if key in {
-            "input_tokens", "output_tokens", "prompt_tokens", "completion_tokens", "total_tokens",
-            "image_tokens", "text_input_tokens", "cached_tokens", "reasoning_tokens", "text_output_tokens",
-        }
-        and isinstance(value, int)
-        and not isinstance(value, bool)
-        and value >= 0
-    }
-    return validated, str(provider_id)[:200] if provider_id else None, usage
+    return validated, *_provider_accounting(result)
 
 
 async def finish_job(
@@ -302,6 +322,7 @@ async def finish_job(
     result=None,
     error_code: str | None = None,
     uncertain: bool = False,
+    accounting=None,
 ) -> bool:
     """Atomically store a locally validated result and its successful state."""
     async with sessions() as db, db.begin():
@@ -361,6 +382,8 @@ async def finish_job(
             if parts is not None:
                 attempt.provider_request_id = parts[1]
                 attempt.usage = parts[2]
+            if accounting is not None:
+                attempt.provider_request_id, attempt.usage = _provider_accounting(accounting)
         return True
 
 
