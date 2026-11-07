@@ -70,7 +70,6 @@ async def generate_conversation(
     if (
         not isinstance(message, str)
         or mode not in ("auto", "generate", "smart")
-        or len(message) > 500
         or not (message.strip() or image)
         or not isinstance(timeout, (int, float))
         or isinstance(timeout, bool)

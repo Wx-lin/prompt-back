@@ -32,7 +32,7 @@ def build_image_prompt(message: str, context: dict | None) -> str:
                 user = item.get("user")
                 assistant = item.get("assistant")
                 if isinstance(user, str) and user:
-                    parts.append("之前的用户描述：" + user[:500])
+                    parts.append("之前的用户描述：" + user)
                 if isinstance(assistant, str) and assistant:
                     parts.append("之前的回复：" + assistant[:500])
     if not parts:

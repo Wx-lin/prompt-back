@@ -63,7 +63,6 @@ def test_reply_context_accepts_dialogue_without_fabricating_a_previous_prompt():
 
 @pytest.mark.parametrize("dialogue", [
     [{"user": "", "assistant": ""}] * 7,
-    [{"user": "a" * 501, "assistant": ""}],
     [{"user": "", "assistant": "a" * 4001}],
     [{"user": None, "assistant": ""}],
     [{"user": "", "assistant": 1}],

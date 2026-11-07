@@ -34,8 +34,12 @@ timer_was_active=false
 prompt_worker_was_running=false
 prompt_worker_resume_attempted=false
 worker_rollback_unsafe=${TEST_UNSAFE:-false}
-reviewed_migration=
-[[ "$worker_rollback_unsafe" != true ]] || reviewed_migration=e81d4a9b216f
+reviewed_migration=${TEST_REVIEWED:-}
+[[ "$worker_rollback_unsafe" != true || -n "$reviewed_migration" ]] || reviewed_migration=e81d4a9b216f
+[[ "$reviewed_migration" != none ]] || reviewed_migration=
+heads=${TEST_HEAD:-}
+api_rollback_unsafe=false
+[[ "$reviewed_migration" != a4d8c9e01b72 ]] || api_rollback_unsafe=true
 migration_started=${TEST_MIGRATION_STARTED:-false}
 printf '%s' old-image > tag-image
 printf '%s' old-image > api-image
@@ -77,7 +81,10 @@ sudo() {
 """
 
 
-def execute(tmp_path, state, mode="success", unsafe=False, db_revision="c2b8e0364a21", migration=False):
+def execute(
+    tmp_path, state, mode="success", unsafe=False, db_revision="c2b8e0364a21", migration=False, reviewed="",
+    head=""
+):
     exercise = r"""
 trap finish EXIT
 pause_prompt_worker
@@ -94,7 +101,8 @@ success=true
         ["bash", "-c", MOCK_DOCKER + shell_functions() + exercise],
         cwd=tmp_path,
         env={**os.environ, "TEST_STATE": state, "TEST_MODE": mode, "TEST_UNSAFE": str(unsafe).lower(),
-             "TEST_DB_REVISION": db_revision, "TEST_MIGRATION_STARTED": str(migration).lower()},
+             "TEST_DB_REVISION": db_revision, "TEST_MIGRATION_STARTED": str(migration).lower(),
+             "TEST_REVIEWED": reviewed, "TEST_HEAD": head},
         capture_output=True,
         text=True,
     )
@@ -176,3 +184,45 @@ def test_real_deployment_calls_worker_hooks_before_build_and_after_health():
     assert source.index("trap finish EXIT") < pause_call < source.index("sudo -n docker build")
     resume_call = source.index('resume_prompt_worker "$new_api_image"')
     assert source.index('[[ "$healthy" == true ]]') < resume_call < source.index("\nsuccess=true")
+
+
+@pytest.mark.parametrize("mode", ["deploy-failure", "up-failure", "wrong-image"])
+def test_long_conversation_failed_release_keeps_new_api_and_stops_worker(tmp_path, mode):
+    result, calls = execute(tmp_path, "running", mode, unsafe=True,
+                            db_revision="a4d8c9e01b72", migration=True, reviewed="a4d8c9e01b72")
+    assert result.returncode != 0
+    assert (tmp_path / "api-image").read_text() == "new-image"
+    assert (tmp_path / "tag-image").read_text() == "new-image"
+    assert (tmp_path / "worker-running").read_text() == "false"
+    assert not any("rollback.yml" in call for call in calls)
+
+
+def test_long_conversation_pre_migration_failure_resumes_old_worker_on_confirmed_parent(tmp_path):
+    result, _ = execute(tmp_path, "running", "pre-migration-failure", unsafe=True,
+                        db_revision="e81d4a9b216f", reviewed="a4d8c9e01b72")
+    assert result.returncode != 0
+    assert (tmp_path / "worker-running").read_text() == "true"
+
+
+@pytest.mark.parametrize("revision,migration", [
+    ("a4d8c9e01b72", False), ("unavailable", False), ("e81d4a9b216f", True),
+])
+def test_long_conversation_early_failure_keeps_old_worker_stopped_when_data_may_exist(
+    tmp_path, revision, migration
+):
+    result, _ = execute(tmp_path, "running", "pre-migration-failure", unsafe=True,
+                        db_revision=revision, migration=migration, reviewed="a4d8c9e01b72")
+    assert result.returncode != 0
+    assert (tmp_path / "worker-running").read_text() == "false"
+
+
+@pytest.mark.parametrize("revision,should_resume", [
+    ("e81d4a9b216f", True), ("a4d8c9e01b72", False), ("unavailable", False),
+])
+def test_normal_push_failure_before_migration_resumes_worker_only_for_confirmed_parent(
+    tmp_path, revision, should_resume
+):
+    result, _ = execute(tmp_path, "running", "pre-migration-failure", unsafe=True,
+                        db_revision=revision, reviewed="none", head="a4d8c9e01b72")
+    assert result.returncode != 0
+    assert (tmp_path / "worker-running").read_text() == str(should_resume).lower()

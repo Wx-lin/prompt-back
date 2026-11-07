@@ -45,6 +45,15 @@ def test_image_prompt_includes_bounded_prior_context_and_current_instruction():
     assert len(build_image_prompt("画图", {"prompt": {"zh": "x" * 20000}})) < 7000
 
 
+def test_image_prompt_preserves_long_previous_user_description():
+    from app.services.vision.image_adapter import build_image_prompt
+    message = "猫" * 1201
+    prompt = build_image_prompt("根据上面生成", {
+        "recent_dialogue": [{"user": message, "assistant": "好的"}],
+    })
+    assert message in prompt
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(('reference', 'endpoint'), [(None, 'generations'), (image_bytes(), 'edits')])
 async def test_provider_selects_generation_or_image_edit(monkeypatch, reference, endpoint):

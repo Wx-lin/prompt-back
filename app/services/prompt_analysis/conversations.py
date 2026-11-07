@@ -95,10 +95,16 @@ async def prepare(
 
 def _bounded_agent_dialogue(recent):
     """Keep 12 user turns and prioritize recent replies within 12k characters."""
-    user_texts = [(item.user_message or item.idea_text or "")[:500] for item in recent]
-    remaining = max(0, 12000 - sum(map(len, user_texts)))
+    remaining = 12000
+    user_turns = []
+    for item in recent:
+        user = item.user_message or item.idea_text or ""
+        if len(user) > remaining:
+            break
+        remaining -= len(user)
+        user_turns.append((item, user))
     selected = []
-    for item, user in zip(recent, user_texts, strict=True):
+    for item, user in user_turns:
         assistant = (item.generated_result or {}).get("reply", "")[:min(2000, remaining)]
         remaining -= len(assistant)
         selected.append({"user": user, "assistant": assistant})

@@ -505,3 +505,34 @@ async def test_legacy_generated_image_flag_is_used_when_new_flag_is_absent(use_m
         "用之前的图画一个太阳", context=context, image=None, timeout=10
     )
     assert isinstance(result.result, ConversationImageIntent)
+
+
+@pytest.mark.asyncio
+async def test_long_user_message_and_history_reach_agent_model_without_truncation(use_model):
+    long_text = "猫" * 1201
+    model = use_model([AIMessage(content="好的")])
+    context = {
+        "title": "猫", "recent_messages": [long_text],
+        "recent_dialogue": [{"user": long_text, "assistant": "好的"}],
+    }
+    await agent.generate_conversation(long_text, context=context, image=None, timeout=10, mode="smart")
+    messages = model.calls[0]
+    assert any(isinstance(item, HumanMessage) and item.content == long_text for item in messages)
+    assert json.loads(messages[-1].content)["当前消息"] == long_text
+
+
+def test_agent_context_keeps_newest_long_user_description_whole():
+    from app.services.prompt_analysis.conversations import _bounded_agent_dialogue
+
+    long_text = "猫" * 1201
+    recent = [SimpleNamespace(user_message=long_text, idea_text=None, generated_result={"reply": "好"})]
+    assert _bounded_agent_dialogue(recent)[0]["user"] == long_text
+
+
+def test_agent_history_budget_never_silently_slices_a_user_description():
+    from app.services.prompt_analysis.conversations import _bounded_agent_dialogue
+
+    newest = SimpleNamespace(user_message="新" * 8000, idea_text=None, generated_result={"reply": "好"})
+    older = SimpleNamespace(user_message="旧" * 5000, idea_text=None, generated_result={"reply": "好"})
+    dialogue = _bounded_agent_dialogue([newest, older])
+    assert [turn["user"] for turn in dialogue] == [newest.user_message]

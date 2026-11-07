@@ -27,7 +27,6 @@ def context():
     "changes",
     [
         {"context": {}},
-        {"message": "猫" * 501},
         {"message": 4},
         {"image": "not bytes"},
         {"timeout": float("nan")},
@@ -44,6 +43,25 @@ async def test_invalid_conversation_input_never_calls_provider(configured, monke
         await generate_conversation(**arguments)
     assert error.value.code == "model_invalid_input"
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_long_message_and_history_are_sent_in_full(configured, monkeypatch):
+    from app.schemas.prompt_conversation import ConversationInput
+
+    message = "🐱" * 1201
+    assert ConversationInput(message=message).message == message
+    history = {**context(), "recent_messages": [message],
+               "recent_dialogue": [{"user": message, "assistant": "好的"}]}
+    calls = []
+    install_transport(monkeypatch, lambda request: (
+        calls.append(json.loads(request.content)) or completion_response(json.dumps(valid_result()))
+    ))
+    await generate_conversation(message, context=history, image=None, timeout=2)
+    payload = json.loads(calls[0]["messages"][1]["content"])
+    assert payload["message"] == message
+    assert payload["context"]["recent_messages"] == [message]
+    assert payload["context"]["recent_dialogue"][0]["user"] == message
 
 
 @pytest.mark.asyncio

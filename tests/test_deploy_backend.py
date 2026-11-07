@@ -323,6 +323,12 @@ def test_release_lock_waits_for_concurrent_frontend_deploy_with_bound():
         ("true", "e04b75ad6312", "c2b8e0364a21", 1, False, "c2b8e0364a21"),
         ("false", "a85c2f87d019", "c2b8e0364a21", 1, False, "c2b8e0364a21"),
         ("true", "a85c2f87d019", "c2b8e0364a21", 1, False, ""),
+        ("true", "e81d4a9b216f", "a4d8c9e01b72", 0, True, "a4d8c9e01b72"),
+        ("true", "a4d8c9e01b72", "a4d8c9e01b72", 0, False, "a4d8c9e01b72"),
+        ("true", "c2b8e0364a21", "a4d8c9e01b72", 1, False, "a4d8c9e01b72"),
+        ("true", "e81d4a9b216f", "ffffffffffff", 1, False, "a4d8c9e01b72"),
+        ("false", "e81d4a9b216f", "a4d8c9e01b72", 1, False, "a4d8c9e01b72"),
+        ("true", "e81d4a9b216f", "a4d8c9e01b72", 1, False, ""),
         ("true", "c2b8e0364a21", "e81d4a9b216f", 0, True, "e81d4a9b216f"),
         ("true", "d93c70f6b321", "e81d4a9b216f", 0, True, "e81d4a9b216f"),
         ("true", "e81d4a9b216f", "e81d4a9b216f", 0, False, "e81d4a9b216f"),
@@ -374,6 +380,8 @@ sudo() {
     [
         ("push", "c2b8e0364a21", "false:"),
         ("push", "e81d4a9b216f", "false:"),
+        ("push", "a4d8c9e01b72", "false:"),
+        ("workflow_dispatch", "a4d8c9e01b72", "true:a4d8c9e01b72"),
         ("workflow_dispatch", "e81d4a9b216f", "true:e81d4a9b216f"),
         ("workflow_dispatch", "c2b8e0364a21", "true:c2b8e0364a21"),
         ("push", "f8b24d0c51e3", "false:"),
@@ -585,3 +593,9 @@ def test_miniprogram_reviewed_migration_is_available_in_workflow_choices():
     source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
     choices = source.split("        options:\n", 1)[1].split("\npermissions:", 1)[0]
     assert "          - c2b8e0364a21\n" in choices + "\n"
+
+
+def test_long_conversation_migration_is_available_as_an_explicit_dispatch_choice():
+    source = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    choices = source.split("        options:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "          - a4d8c9e01b72\n" in choices + "\n"

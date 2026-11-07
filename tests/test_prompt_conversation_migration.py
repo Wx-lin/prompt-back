@@ -30,6 +30,9 @@ async def test_conversation_migration_preserves_legacy_and_refuses_history_loss(
     migration = runpy.run_path(
         str(Path(__file__).parents[1] / "alembic/versions/27f86a5d9c10_prompt_conversations.py")
     )
+    latest = runpy.run_path(
+        str(Path(__file__).parents[1] / "alembic/versions/a4d8c9e01b72_unlimit_conversation_message.py")
+    )
 
     def migrate(connection, direction):
         with Operations.context(MigrationContext.configure(connection)):
@@ -37,6 +40,10 @@ async def test_conversation_migration_preserves_legacy_and_refuses_history_loss(
 
     async with sessions() as db:
         connection = await db.connection()
+        def downgrade_latest(conn):
+            with Operations.context(MigrationContext.configure(conn)):
+                latest["downgrade"]()
+        await connection.run_sync(downgrade_latest)
         await connection.run_sync(lambda conn: migrate(conn, "downgrade"))
         old_columns = await connection.run_sync(
             lambda conn: {c["name"] for c in inspect(conn).get_columns("prompt_analyses")}
@@ -64,4 +71,25 @@ async def test_conversation_migration_preserves_legacy_and_refuses_history_loss(
     async with sessions() as db:
         connection = await db.connection()
         with pytest.raises(RuntimeError, match="Cannot downgrade"):
+            await connection.run_sync(lambda conn: migrate(conn, "downgrade"))
+
+
+async def test_long_conversation_migration_rejects_unsafe_downgrade(api, sessions):
+    migration = runpy.run_path(
+        str(Path(__file__).parents[1] / "alembic/versions/a4d8c9e01b72_unlimit_conversation_message.py")
+    )
+
+    def migrate(connection, direction):
+        with Operations.context(MigrationContext.configure(connection)):
+            migration[direction]()
+
+    async with sessions() as db:
+        connection = await db.connection()
+        await connection.run_sync(lambda conn: migrate(conn, "downgrade"))
+        await connection.run_sync(lambda conn: migrate(conn, "upgrade"))
+        await db.commit()
+    response_data(await create_conversation(api, {"message": "猫" * 1201}), 202)
+    async with sessions() as db:
+        connection = await db.connection()
+        with pytest.raises(RuntimeError, match="long conversation messages"):
             await connection.run_sync(lambda conn: migrate(conn, "downgrade"))

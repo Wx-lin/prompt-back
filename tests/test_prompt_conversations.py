@@ -50,7 +50,7 @@ async def send_message(api, parent, message="改成白天，保留构图", **ext
 
 @pytest.mark.parametrize(
     "body",
-    [{}, {"message": " "}, {"message": 4}, {"message": "猫" * 501}, {"message": "猫", "unexpected": True}],
+    [{}, {"message": " "}, {"message": 4}, {"message": "猫", "unexpected": True}],
 )
 async def test_conversation_rejects_invalid_inputs(api, body):
     response = await api.client.post(
@@ -64,6 +64,37 @@ async def test_conversation_rejects_invalid_inputs(api, body):
 async def test_conversation_authentication_is_private(api):
     response_data(await api.client.post("/api/prompt-conversations", json={"message": "猫"}), 401)
     response_data(await api.client.get("/api/prompt-conversations"), 401)
+
+
+async def test_long_conversation_message_survives_storage_and_followup(api, sessions, monkeypatch):
+    calls = []
+    install_transport(monkeypatch, lambda request: (
+        calls.append(json.loads(request.content)) or completion_response(json.dumps(valid_result()))
+    ))
+    message = "🐱" * 1201
+    first = response_data(await create_conversation(api, {"message": message}), 202)
+    assert first["user_message"] == message
+    assert await run_once(sessions)
+    second = response_data(await send_message(api, first, message), 202)
+    assert second["user_message"] == message
+    assert await run_once(sessions)
+    payload = json.loads(calls[1]["messages"][1]["content"])
+    assert payload["message"] == message
+    assert payload["context"]["recent_messages"] == [message]
+
+
+async def test_long_conversation_message_with_image_is_preserved(api, sessions, monkeypatch):
+    calls = []
+    install_transport(monkeypatch, lambda request: (
+        calls.append(json.loads(request.content)) or completion_response(json.dumps(valid_result()))
+    ))
+    asset = await upload(api)
+    message = "猫" * 1201
+    first = response_data(await create_conversation(api, {"message": message, "asset_id": asset["id"]}), 202)
+    assert first["user_message"] == message
+    assert await run_once(sessions)
+    payload = json.loads(calls[0]["messages"][1]["content"][0]["text"])
+    assert payload["message"] == message
 
 
 async def test_text_conversation_preserves_effective_context_versions_and_history(api, sessions, monkeypatch):

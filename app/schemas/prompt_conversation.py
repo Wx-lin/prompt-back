@@ -12,7 +12,7 @@ class ConversationInput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     message: (
-        Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=500)]
+        Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1)]
         | None
     ) = None
     asset_id: UUID | None = None
@@ -75,7 +75,7 @@ class ConversationImageQuestion(BaseModel):
 class ConversationDialogue(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    user: Annotated[str, Field(max_length=500)]
+    user: str
     assistant: Annotated[str, Field(max_length=4000)]
 
 
@@ -86,7 +86,7 @@ class ConversationContext(BaseModel):
     prompt: BilingualPrompt | None = None
     breakdown: PromptBreakdown | None = None
     source_type: Literal["image", "text"] | None = None
-    recent_messages: Annotated[list[Annotated[str, Field(max_length=500)]], Field(max_length=6)]
+    recent_messages: Annotated[list[str], Field(max_length=6)]
     recent_dialogue: Annotated[list[ConversationDialogue], Field(max_length=6)] = Field(default_factory=list)
     has_generated_image: bool = False
 
@@ -100,7 +100,7 @@ class AgentConversationDialogue(ConversationDialogue):
 class AgentConversationContext(ConversationContext):
     """Recent agent history: at most 12 turns and 12,000 dialogue characters."""
 
-    recent_messages: Annotated[list[Annotated[str, Field(max_length=500)]], Field(max_length=12)]
+    recent_messages: Annotated[list[str], Field(max_length=12)]
     recent_dialogue: Annotated[list[AgentConversationDialogue], Field(max_length=12)] = Field(
         default_factory=list
     )

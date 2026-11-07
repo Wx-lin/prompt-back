@@ -78,10 +78,6 @@ class PromptAnalysis(Base):
             name="ck_prompt_conversation_turn",
         ),
         CheckConstraint(
-            "user_message IS NULL OR char_length(user_message) <= 500",
-            name="ck_prompt_conversation_message",
-        ),
-        CheckConstraint(
             "status IN ('queued','running','succeeded','failed','unknown','canceled')",
             name="ck_prompt_analysis_status",
         ),
@@ -94,7 +90,8 @@ class PromptAnalysis(Base):
             "(input_type = 'image' AND asset_id IS NOT NULL AND idea_text IS NULL "
             "AND purpose IS NULL AND style IS NULL) OR "
             "(input_type = 'text' AND asset_id IS NULL AND "
-            "((idea_text IS NOT NULL AND char_length(idea_text) BETWEEN 1 AND 500 "
+            "((idea_text IS NOT NULL AND char_length(idea_text) >= 1 "
+            "AND (conversation_id IS NOT NULL OR char_length(idea_text) <= 500) "
             "AND char_length(trim(idea_text)) > 0) OR "
             "(deleted_at IS NOT NULL AND idea_text IS NULL)))",
             name="ck_prompt_analysis_input",
